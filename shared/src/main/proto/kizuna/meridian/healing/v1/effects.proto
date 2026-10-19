@@ -1,0 +1,16 @@
+syntax = "proto3";
+package kizuna.meridian.healing.v1;
+option java_package = "dev.kizuna.meridian.healing.pb";
+option java_outer_classname = "HealingEffects";
+
+// 只保存此附属授予的临时效果，不保存身体 HP 或基础上限。
+message EffectState {
+  string body_id = 1;
+  repeated PartShield shields = 2;
+  int32 absorption_level = 3; // 放大等级 +1，零表示没有效果。
+  repeated PartShield health_boost_grants = 4; // amount 为本附属已授予的上限增量。
+}
+message PartShield {
+  string part_id = 1;
+  double amount = 2;
+}

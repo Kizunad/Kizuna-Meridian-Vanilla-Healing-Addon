@@ -1,0 +1,11 @@
+plugins { id 'com.google.protobuf' }
+
+dependencies {
+    api 'local.meridian:server'
+    implementation 'org.tomlj:tomlj:1.1.1'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+sourceSets.main.proto.srcDir rootProject.file('shared/src/main/proto')
+protobuf { protoc { artifact = 'com.google.protobuf:protoc:4.36.2' } }
+test { useJUnit() }

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "meridian_healing_test",
+  "version": "1.0.0",
+  "name": "Meridian Healing Integration Test",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": ["dev.kizuna.meridian.healing.test.HealingGameTest"],
+    "meridian_health_host": ["dev.kizuna.meridian.healing.test.HealingGameTest"]
+  }
+}

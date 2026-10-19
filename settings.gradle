@@ -1,0 +1,23 @@
+pluginManagement {
+    repositories {
+        maven { url = 'https://maven.fabricmc.net/' }
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'kizuna-meridian-vanilla-healing-addon'
+include 'server', 'fabric'
+
+// 本地源码替换键不是已发布的 Maven 坐标。
+includeBuild(providers.gradleProperty('meridianFrameworkDir').getOrElse('../Kizuna-Meridian-Mod-Framework')) {
+    dependencySubstitution {
+        substitute module('local.meridian:server') using project(':server')
+    }
+}
+includeBuild(providers.gradleProperty('meridianDamageDir').getOrElse('../Kizuna-Meridian-Vanilla-Damage-Addon')) {
+    dependencySubstitution {
+        substitute module('local.meridian:vanilla-damage-fabric') using project(':fabric')
+        substitute module('dev.kizuna.meridian.vanilla:server') using project(':server')
+    }
+}

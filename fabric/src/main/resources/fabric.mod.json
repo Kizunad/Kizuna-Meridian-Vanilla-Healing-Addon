@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "meridian_vanilla_healing",
+  "version": "${version}",
+  "name": "Kizuna's Meridian Vanilla Healing Addon",
+  "description": "原版治疗、自然回血、局部黄心与图腾的身体 HP 接线",
+  "authors": ["Kizunad"],
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.kizuna.meridian.healing.fabric.HealingFabric"],
+    "meridian_damage_integration": ["dev.kizuna.meridian.healing.fabric.HealingDamageIntegration"]
+  },
+  "mixins": ["meridian_vanilla_healing.mixins.json"],
+  "depends": {
+    "java": ">=17", "minecraft": "1.20.1", "fabricloader": ">=0.16.10", "fabric-api": "*",
+    "meridian_vanilla_damage": "*"
+  }
+}

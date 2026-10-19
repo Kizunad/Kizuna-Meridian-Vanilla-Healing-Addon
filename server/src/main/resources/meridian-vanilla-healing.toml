@@ -1,0 +1,11 @@
+# 数值均为可调的初版参数。修改后重启服务器。
+hp_per_vanilla_hp = 1.0
+# shared：原版总量均分；per_part：每个部位各获得原版全额。
+absorption_distribution = "shared"
+natural_healing_multiplier = 0.5
+health_boost_changes_part_limits = false
+totem_enabled = true
+# 图腾本次保命时，将各部位/组织/器官至少恢复到各自上限的这一比例。
+totem_minimum_hp_ratio = 0.25
+respect_peaceful_difficulty = true
+respect_natural_regeneration = true

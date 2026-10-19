@@ -1,0 +1,68 @@
+plugins { id 'fabric-loom' }
+
+repositories { maven { url = 'https://maven.fabricmc.net/' } }
+dependencies {
+    minecraft 'com.mojang:minecraft:1.20.1'
+    mappings 'net.fabricmc:yarn:1.20.1+build.10:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.3+1.20.1'
+    modImplementation 'local.meridian:vanilla-damage-fabric'
+    implementation project(':server')
+    include project(':server')
+    include implementation('local.meridian:server')
+    include implementation('com.google.protobuf:protobuf-java:4.36.2')
+    include implementation('org.tomlj:tomlj:1.1.1')
+    include implementation('org.antlr:antlr4-runtime:4.11.1')
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand version: project.version }
+}
+
+loom {
+    mods { meridian_vanilla_healing { sourceSet sourceSets.main } }
+    runs { server { runDir 'build/server' } }
+}
+
+sourceSets {
+    gametest {
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+        runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+    }
+}
+loom {
+    mods { meridian_healing_test { sourceSet sourceSets.gametest } }
+    runs {
+        gametest {
+            server()
+            name 'Healing GameTest'
+            source sourceSets.gametest
+            runDir 'build/gametest'
+            vmArg '-Dfabric-api.gametest'
+            vmArg '-Dfabric-api.gametest.report-file=build/gametest-results.xml'
+        }
+        gametestConfigured {
+            server()
+            name 'Healing Configured GameTest'
+            source sourceSets.gametest
+            runDir 'build/gametest-configured'
+            vmArg '-Dfabric-api.gametest'
+            vmArg '-Dfabric-api.gametest.report-file=build/gametest-configured-results.xml'
+        }
+    }
+}
+
+// 独立运行目录验证非默认配置，不改正式配置，也不提供产品级测试旁路。
+tasks.named('runGametestConfigured') {
+    doFirst {
+        def configuration = file('build/gametest-configured/config/meridian-vanilla-healing.toml')
+        configuration.parentFile.mkdirs()
+        configuration.text = '''absorption_distribution = "per_part"
+health_boost_changes_part_limits = true
+totem_enabled = false
+respect_peaceful_difficulty = false
+respect_natural_regeneration = false
+'''
+    }
+}
