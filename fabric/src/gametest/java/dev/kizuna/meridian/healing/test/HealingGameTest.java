@@ -35,11 +35,40 @@ import java.util.Optional;
 /** 真实原版事件、伤害附属与核心账本的整体回归，样例内容不进入发布包。 */
 public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
     private static final InMemoryBodyStore STORE = new InMemoryBodyStore(List.of(), List.of());
+    private static final java.util.Set<String> REJECTED_SUBJECTS = new java.util.HashSet<>();
     private static final BodyCommandHandler<String> COMMANDS = new BodyCommandHandler<>(
             (caller, command) -> Optional.of(caller), (caller, command, body) -> true,
             (caller, body) -> TimeAdvancePlan.newBuilder().setTarget(BodyProtobuf.toTime(body.settledAt()))
                     .setMode(TimeAdvanceMode.ACTIVE).setBiologicalSecondsPerSimulationSecond(1).build(),
             STORE, (caller, receipt, previous, updated) -> { /* 断言读取实际已提交身体。 */ });
+
+    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
+    public void workerConstructionInitializesHealthAndPreservesHostThreadChecks(TestContext context) {
+        // 下界生成会在工作线程构造炽足兽；构造期初始血量必须完整建立。
+        var entity = java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> EntityType.STRIDER.create(context.getWorld())).join();
+        context.assertTrue(entity != null, "实际构造炽足兽");
+        close(context, entity.getHealth(), entity.getMaxHealth(), "工作线程构造保留初始满血");
+        context.assertTrue(!((HealingEntityAccess) entity).meridian$internalHealth(), "构造后恢复权威健康拦截");
+
+        // 运行期查询仍需通过 Human 的主线程校验，不能以构造修复为由吞掉拒绝。
+        boolean rejected = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                HealingFabric.inspect(entity);
+                return false;
+            } catch (IllegalArgumentException expected) {
+                return true;
+            }
+        }).join();
+        context.assertTrue(rejected, "运行期异步健康查询仍明确失败");
+
+        // 同一实体完成绑定后，第三方 setter 继续只能投影身体 HP。
+        bind(entity, 40, 40);
+        entity.setHealth(entity.getMaxHealth());
+        close(context, hp(entity, 0) + hp(entity, 1), 80, "初始赋值路径不泄漏到运行期");
+        close(context, entity.getHealth(), entity.getMaxHealth() * .4, "血条由身体比例决定");
+        context.complete();
+    }
 
     @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
     public void healingAndEffectsUseBodyHpWithoutRestoringDestroyedParts(TestContext context) {
@@ -98,6 +127,33 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         bind(undead, 100);
         StatusEffects.INSTANT_HEALTH.applyInstantEffect(null, null, undead, 0, 1);
         close(context, hp(undead, 0), 94, "亡灵治疗仍作为6伤害交给伤害附属");
+        context.complete();
+    }
+
+    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
+    public void rejectedHostStopsEffectsWithoutCrashingPlayerTickOrVanillaHealing(TestContext context) {
+        // 模拟已认领身体在结算时失败，实际执行饥饿、和平回血和效果 mixin。
+        var player = context.createMockSurvivalPlayer();
+        bind(player, 40, 40);
+        float displayedHp = player.getHealth();
+        long revision = body(player).revision();
+        float exhaustion = player.getHungerManager().getExhaustion();
+        REJECTED_SUBJECTS.add(player.getUuidAsString());
+        try {
+            player.heal(4);
+            player.setHealth(player.getMaxHealth());
+            player.addStatusEffect(new StatusEffectInstance(StatusEffects.HEALTH_BOOST, 100, 1));
+            for (int tick = 0; tick < 21; tick++) {
+                player.tick();
+            }
+            close(context, player.getHealth(), displayedHp, "失败不能回落到原版回血");
+            close(context, player.getMaxHealth(), 20, "失败不能添加原版生命上限");
+            close(context, body(player).revision(), revision, "失败不提交身体变化");
+            close(context, player.getHungerManager().getExhaustion(), exhaustion, "未回血不收费");
+        } finally {
+            // 测试失败也释放拒绝夹具，不影响其他真实服务器场景。
+            REJECTED_SUBJECTS.remove(player.getUuidAsString());
+        }
         context.complete();
     }
 
@@ -256,6 +312,11 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         // 仅认领测试中登记的实体，实际操作经过正式命令处理器和事务存储。
         var request = HealthHostProtobuf.decodeRequest(payload);
         var response = HealthHostResponse.newBuilder().setProtocolVersion(1).setRequestId(request.getRequestId());
+        if (REJECTED_SUBJECTS.contains(request.getSubjectId())) {
+            return HealthHostProtobuf.encodeResponse(response.setFailure(
+                    dev.kizuna.meridian.protocol.pb.MeridianMessages.RequestFailure.newBuilder()
+                            .setCode(dev.kizuna.meridian.protocol.pb.MeridianMessages.FailureCode.INTERNAL_ERROR)).build());
+        }
         var found = STORE.find(new BodyId(request.getSubjectId()));
         if (found.isEmpty()) {
             return HealthHostProtobuf.encodeResponse(response.setUnbound(true).build());
@@ -283,7 +344,7 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
             states.add(new AnatomyState.Part(id, hp[index]));
         }
         var structure = new BodyStructure(parts, List.of(), List.of(), List.of(), List.of());
-        STORE.registerBody(new BodySnapshot(2, new BodyId(entity.getUuidAsString()),
+        STORE.registerBody(new BodySnapshot(BodySnapshot.CURRENT_SCHEMA_VERSION, new BodyId(entity.getUuidAsString()),
                 new BodyTemplate.Reference(new DefinitionId("sample:creature"), 1), structure, Realm.WANDERING_QI,
                 states, List.of(), List.of(), List.of(), List.of(), new VitalityState(0, 1000, 0, false),
                 new TimeCursor(new DefinitionId("sample:world"), "epoch", 0), 0));

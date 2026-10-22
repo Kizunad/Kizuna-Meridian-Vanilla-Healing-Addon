@@ -15,7 +15,7 @@ public abstract class PeacefulHealingMixin {
     private void meridian$additionalPeacefulHealing(CallbackInfo callback) {
         // 原版路径保留；配置只补充原版条件拒绝的回血，不改变难度或自动补食。
         PlayerEntity player = (PlayerEntity) (Object) this;
-        if (HealingFabric.inspect(player).isEmpty()) {
+        if (player.getWorld().isClient || player.age % 20 != 0 || player.getHealth() >= player.getMaxHealth()) {
             return;
         }
         boolean peaceful = player.getWorld().getDifficulty() == Difficulty.PEACEFUL;
@@ -24,9 +24,9 @@ public abstract class PeacefulHealingMixin {
             return;
         }
         boolean difficultyAllows = peaceful || !HealingFabric.config().respectPeaceful();
-        if (difficultyAllows && HealingFabric.naturalRegeneration(player.getWorld().getGameRules())
-                && player.age % 20 == 0 && player.getHealth() < player.getMaxHealth()) {
-            player.heal(1);
+        if (difficultyAllows && HealingFabric.naturalRegeneration(player.getWorld().getGameRules())) {
+            // 补充治疗只走有异常边界的身体入口，失败停止本次效果，未绑定也不额外回血。
+            HealingFabric.interceptHeal(player, 1);
         }
     }
 }

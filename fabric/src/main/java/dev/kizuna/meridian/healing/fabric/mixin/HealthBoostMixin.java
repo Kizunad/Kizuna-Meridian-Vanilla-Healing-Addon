@@ -15,7 +15,7 @@ public abstract class HealthBoostMixin {
     @Inject(method = {"onApplied", "onRemoved"}, at = @At("HEAD"), cancellable = true)
     private void meridian$bodyHealthBoost(LivingEntity entity, AttributeContainer attributes, int amplifier, CallbackInfo callback) {
         // 生命提升由身体上限配置接管，避免原版属性制造没有身体依据的额外红心。
-        if ((Object) this == StatusEffects.HEALTH_BOOST && HealingFabric.inspect(entity).isPresent()) {
+        if ((Object) this == StatusEffects.HEALTH_BOOST && HealingFabric.blocksVanillaHealth(entity)) {
             callback.cancel();
         }
     }

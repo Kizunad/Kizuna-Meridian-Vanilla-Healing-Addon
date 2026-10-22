@@ -20,6 +20,8 @@ processResources {
     filesMatching('fabric.mod.json') { expand version: project.version }
 }
 
+apply from: '../../Kizuna-Meridian-Mod-Framework/scripts/full-assembly.gradle'
+
 loom {
     mods { meridian_vanilla_healing { sourceSet sourceSets.main } }
     runs { server { runDir 'build/server' } }

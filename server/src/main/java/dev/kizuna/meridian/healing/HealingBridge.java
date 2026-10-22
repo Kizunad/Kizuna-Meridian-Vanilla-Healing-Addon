@@ -16,8 +16,11 @@ public final class HealingBridge {
     private final List<BodyHealthHost> hosts;
 
     public HealingBridge(List<BodyHealthHost> hosts) {
-        // 入口由宿主发现，纯规则层不引用 Minecraft 或人体内部类。
+        // 缺少宿主是装配错误；只有宿主明确返回 unbound 才代表原版实体。
         this.hosts = List.copyOf(hosts);
+        if (this.hosts.isEmpty()) {
+            throw HealingErrors.invalid(HealingErrors.NO_HOST);
+        }
     }
 
     public Optional<Binding> inspect(String subjectId) {

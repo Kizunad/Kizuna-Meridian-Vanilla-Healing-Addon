@@ -31,7 +31,7 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
 
     @Override
     public boolean meridian$internalHealth() {
-        // 只有从身体投影血条的内部 setter 可以绕过拦截。
+        // 身体血条投影与构造器初始赋值使用内部 setter，其余调用均进入宿主校验。
         return meridian$internalHealth;
     }
 
@@ -45,6 +45,18 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     public boolean meridian$loadingEffects() {
         // 读取 NBT 时暂缓效果授予，待保存的局部余额一起恢复。
         return meridian$loading;
+    }
+
+    @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;setHealth(F)V"))
+    private void meridian$initializeHealth(LivingEntity entity, float health) {
+        // 区块生成线程也会构造生物；此时只初始化实体血条，尚未进入身体宿主的运行期。
+        meridian$internalHealth = true;
+        try {
+            entity.setHealth(health);
+        } finally {
+            // 仅构造器这次初始赋值可直达原版，之后的 setter 仍必须经过权威身体校验。
+            meridian$internalHealth = false;
+        }
     }
 
     @Inject(method = "heal", at = @At("HEAD"), cancellable = true)
@@ -111,7 +123,7 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     @Redirect(method = "applyDamage", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;getAbsorptionAmount()F"))
     private float meridian$skipGlobalShield(LivingEntity entity) {
         // 已绑定实体的黄心由命中部位结算，原版阶段必须看见零全局余额。
-        if (HealingFabric.inspect(entity).isPresent()) {
+        if (HealingFabric.blocksVanillaHealth(entity)) {
             return 0;
         }
         return entity.getAbsorptionAmount();
@@ -120,7 +132,7 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     @Redirect(method = "applyDamage", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;setAbsorptionAmount(F)V"))
     private void meridian$preserveLocalShield(LivingEntity entity, float amount) {
         // 原版 applyDamage 有多处全局扣黄心，均不能改写局部汇总显示。
-        if (HealingFabric.inspect(entity).isEmpty()) {
+        if (!HealingFabric.blocksVanillaHealth(entity)) {
             entity.setAbsorptionAmount(amount);
         }
     }
@@ -128,8 +140,15 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     @Inject(method = "tryUseTotem", at = @At("HEAD"), cancellable = true)
     private void meridian$preventLateTotem(DamageSource source, CallbackInfoReturnable<Boolean> callback) {
         // 身体已死亡说明此次没有批准保命，不能事后只复活原版血条。
-        var binding = HealingFabric.inspect((LivingEntity) (Object) this);
-        if (binding.isPresent() && binding.get().body().getVitality().getDead()) {
+        LivingEntity entity = (LivingEntity) (Object) this;
+        try {
+            var binding = HealingFabric.inspect(entity);
+            if (binding.isPresent() && binding.get().body().getVitality().getDead()) {
+                callback.setReturnValue(false);
+            }
+        } catch (RuntimeException failure) {
+            // 未确认身体允许保命时停止图腾效果，不能消费物品或只复活原版血条。
+            HealingFabric.report(entity, failure);
             callback.setReturnValue(false);
         }
     }

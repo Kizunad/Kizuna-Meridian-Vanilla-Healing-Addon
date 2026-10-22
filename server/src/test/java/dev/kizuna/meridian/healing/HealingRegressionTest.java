@@ -57,7 +57,7 @@ public class HealingRegressionTest {
         var structure = new BodyStructure(List.of(new Anatomy.PartDefinition(left, "左", 100),
                 new Anatomy.PartDefinition(right, "右", 100), new Anatomy.PartDefinition(lost, "毁", 100)),
                 List.of(), List.of(), List.of(), List.of());
-        return BodyProtobuf.toMessage(new BodySnapshot(2, new BodyId("sample"),
+        return BodyProtobuf.toMessage(new BodySnapshot(BodySnapshot.CURRENT_SCHEMA_VERSION, new BodyId("sample"),
                 new BodyTemplate.Reference(new DefinitionId("sample:body"), 1), structure, Realm.WANDERING_QI,
                 List.of(new AnatomyState.Part(left, 99), new AnatomyState.Part(right, 50),
                         new AnatomyState.Part(lost, 0)), List.of(), List.of(), List.of(), List.of(),

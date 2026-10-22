@@ -12,11 +12,15 @@ python3 scripts/check_docs.py
 git diff --check
 ```
 
-安装 `fabric/build/libs/` 下不带 `dev` 或 `sources` 的重映射 JAR，并另外安装匹配本次协议的 Vanilla Damage Addon、Fabric API 和提供身体的生物 Addon，例如 Human。Damage 不嵌套进本包；Framework 服务端库与纯规则依赖由构建嵌入。执行发生在服务器，单机由集成服务器处理。
+安装 `fabric/build/libs/` 下不带 `dev` 或 `sources` 的重映射 JAR，Meridian 九仓按适用端整套必装并提供 Fabric API。开发运行统一应用 Framework 的 `scripts/full-assembly.gradle`，固定装配同级安装产物。Damage 不嵌套进本包；Framework 服务端库与纯规则依赖由构建嵌入。执行发生在服务器，单机由集成服务器处理。缺健康宿主启动时报错；已装配宿主明确返回实体未绑定时才走原版治疗。
 
 ## 跨附属协议
 
 `meridian_health_host` 提供 Framework `BodyHealthHost.exchange(byte[])`，交换 `HealthHostRequest / HealthHostResponse`。本包以实体 UUID 查询唯一宿主，固定身体 revision 后通过 `handleHealthEffect` 提交 `HealBody` 或 `SetPartHealthLimits`。失败不换宿主、不刷新版本重发、不回落到原版直接回血。
+
+宿主查询仍严格拒绝协议错误与失败响应。原版事件边界会记录异常并停止当前治疗、自然回血或临时效果；不会让失败冒出玩家 tick，也不会把失败视为未绑定。自然回血未提交时不扣相应饥饿消耗。附加和平回血仅在实际满足治疗时间与血量条件时查询宿主。
+
+原版 `LivingEntity` 构造器设置初始血量时，实体尚未进入身体宿主运行期；这一次初始化沿用原版 setter，允许区块生成线程正常构造生物。构造调用返回即恢复健康拦截，运行期查询和 setter 继续经过宿主校验，异步访问的明确拒绝保持有效。
 
 `meridian_damage_integration` 提供 Framework `BodyDamageIntegration`。`prepare` 接收固定命中与最终剂量的 `DamageIntegrationContext`，只读生成 `DamageIntegrationPlan`，可以减少剂量并提供受校验保命下限。Damage 将剩余伤害通过原宿主提交；成功后发送 `DamageIntegrationCommit`，本包才扣除局部黄心并同步血条。完全吸收无需 HP 事务。多个集成方同时认领会拒绝，不隐式决定叠加顺序。
 
@@ -27,6 +31,10 @@ git diff --check
 ## 验证边界
 
 整体回归覆盖均分守恒、满血溢出、零 HP 排除、配置和余额编码往返。GameTest 运行真实 Minecraft 服务端，经过 Mixins、Damage 及 Framework 实际命令事务；覆盖玩家与非玩家治疗、实际药水/金苹果消费、再生、直接 setter 拦截、局部黄心扣除、到期与牛奶、效果重载、生命提升、图腾、虚空、亡灵瞬间治疗伤害、自然回血及世界规则。
+
+构造生命周期回归在工作线程创建真实炽足兽，检查初始满血、构造后拦截标志复位、运行期异步查询拒绝，以及绑定后的 setter 仍由身体 HP 投影。
+
+2026-10-21 原仓 Java 17 构建及 2 项整体回归通过；默认与配置变体各 5 项 GameTest 通过。未修复版本在新增构造回归中只有 1/20 HP，其余四项通过；修复版本保留运行期线程与宿主校验。包含本修复的 Windows 完整装配另通过双客户端换维度、重生、断线和重连流程。
 
 `runGametest` 验证默认配置；`runGametestConfigured` 在独立生成目录验证每部位全额黄心、生命提升启用、图腾禁用和规则覆盖。测试宿主与样例构型仅在 GameTest source set，不进入安装 JAR。GameTest 是实际服务器运行验证，不能代替 Windows 手动游玩验收。
 

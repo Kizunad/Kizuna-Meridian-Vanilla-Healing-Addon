@@ -42,7 +42,7 @@ public final class HealingFabric implements ModInitializer {
 
     public static Optional<HealingBridge.Binding> inspect(LivingEntity entity) {
         // 客户端只显示同步结果；构造与存档载入阶段也不能写身体账本。
-        if (bridge == null || entity.getWorld().isClient || ((HealingEntityAccess) entity).meridian$loadingEffects()) {
+        if (entity.getWorld().isClient || ((HealingEntityAccess) entity).meridian$loadingEffects()) {
             return Optional.empty();
         }
         return bridge.inspect(entity.getUuidAsString());
@@ -60,6 +60,16 @@ public final class HealingFabric implements ModInitializer {
             report(entity, failure);
         }
         return true;
+    }
+
+    public static boolean blocksVanillaHealth(LivingEntity entity) {
+        // 原版拦截只需判断归属；宿主拒绝时也封住旁路，错误仍明确记录。
+        try {
+            return inspect(entity).isPresent();
+        } catch (RuntimeException failure) {
+            report(entity, failure);
+            return true;
+        }
     }
 
     public static double heal(LivingEntity entity, HealingBridge.Binding binding, double vanillaHp) {

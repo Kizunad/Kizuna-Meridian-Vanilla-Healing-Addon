@@ -2,6 +2,7 @@ package dev.kizuna.meridian.healing;
 
 /** 运行期诊断集中管理，宿主失败码继续使用框架协议。 */
 public final class HealingErrors {
+    public static final String NO_HOST = "缺少必需的 meridian_health_host 身体宿主";
     public static final String CONFIG = "治疗配置无效";
     public static final String HOST = "健康宿主响应错误或重复认领身体";
     public static final String EFFECT_STATE = "临时健康效果状态无效";
