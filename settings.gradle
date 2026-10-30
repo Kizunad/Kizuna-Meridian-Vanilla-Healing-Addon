@@ -6,18 +6,22 @@ pluginManagement {
     }
 }
 
+// 相邻仓库位置、产物路径与第三方版本都由 Framework 的工作区脚本提供（kizunaWorkspace、libs）。
+apply from: new File(rootDir.parentFile, 'Kizuna-Meridian-Mod-Framework/scripts/workspace.gradle')
+
 rootProject.name = 'kizuna-meridian-vanilla-healing-addon'
 include 'server', 'fabric'
 
-// 本地源码替换键不是已发布的 Maven 坐标。
-includeBuild(providers.gradleProperty('meridianFrameworkDir').getOrElse('../Kizuna-Meridian-Mod-Framework')) {
-    dependencySubstitution {
-        substitute module('local.meridian:server') using project(':server')
-    }
-}
-includeBuild(providers.gradleProperty('meridianDamageDir').getOrElse('../Kizuna-Meridian-Vanilla-Damage-Addon')) {
-    dependencySubstitution {
-        substitute module('local.meridian:vanilla-damage-fabric') using project(':fabric')
-        substitute module('dev.kizuna.meridian.vanilla:server') using project(':server')
-    }
-}
+// 本地源码替换键不是已发布的 Maven 坐标；Damage 传递的功法 shared 编译期导入框架客户端协议。
+kizunaWorkspace.includeSource('framework', [client: 'local.meridian:client', server: 'local.meridian:server'])
+// Damage 与其依赖的功法库都以源码组合。二者的 fabric 是模组依赖，Loom 按真实坐标重新加入其传递库，
+// 所以替换键用各工程自身的 group 与工程名；登记后完整装配按同一组件装入，不再另读同名 JAR。
+kizunaWorkspace.includeSource('vanilla-damage', [
+        fabric: 'dev.kizuna.meridian.vanilla:fabric',
+        server: 'dev.kizuna.meridian.vanilla:server'
+])
+kizunaWorkspace.includeSource('technique', [
+        fabric: 'dev.kizuna.meridian.technique:fabric',
+        server: 'dev.kizuna.meridian.technique:server',
+        shared: 'dev.kizuna.meridian.technique:shared'
+])

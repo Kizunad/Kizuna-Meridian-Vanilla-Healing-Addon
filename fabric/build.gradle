@@ -2,17 +2,21 @@ plugins { id 'fabric-loom' }
 
 repositories { maven { url = 'https://maven.fabricmc.net/' } }
 dependencies {
-    minecraft 'com.mojang:minecraft:1.20.1'
-    mappings 'net.fabricmc:yarn:1.20.1+build.10:v2'
-    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
-    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.92.3+1.20.1'
-    modImplementation 'local.meridian:vanilla-damage-fabric'
+    minecraft libs.minecraft
+    mappings "net.fabricmc:yarn:${libs.versions.yarn.get()}:v2"
+    modImplementation libs.fabric.loader
+    modImplementation libs.fabric.api
+    modImplementation 'dev.kizuna.meridian.vanilla:fabric'
     implementation project(':server')
     include project(':server')
     include implementation('local.meridian:server')
-    include implementation('com.google.protobuf:protobuf-java:4.36.2')
-    include implementation('org.tomlj:tomlj:1.1.1')
-    include implementation('org.antlr:antlr4-runtime:4.11.1')
+    // 版本目录条目是 Provider，implementation 不返回依赖对象，嵌套声明单独写。
+    implementation libs.protobuf.java
+    include libs.protobuf.java
+    implementation libs.tomlj
+    include libs.tomlj
+    implementation libs.antlr.runtime
+    include libs.antlr.runtime
 }
 
 processResources {
@@ -29,7 +33,7 @@ tasks.named('remapJar') {
     dependsOn clearNestedJarCache
 }
 
-apply from: '../../Kizuna-Meridian-Mod-Framework/scripts/full-assembly.gradle'
+apply from: new File(kizunaWorkspace.directory('framework'), 'scripts/full-assembly.gradle')
 
 loom {
     mods { meridian_vanilla_healing { sourceSet sourceSets.main } }
