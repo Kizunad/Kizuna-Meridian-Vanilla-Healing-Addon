@@ -2,7 +2,7 @@
 
 ## 本地构建与安装
 
-需要 Java 17、Minecraft 1.20.1、Fabric Loader 0.16.10、Fabric API 0.92.3+1.20.1。相邻仓库 Framework、Vanilla Damage Addon 及其依赖的功法库通过 Gradle composite build 接入：`settings.gradle` 应用 Framework 的 `scripts/workspace.gradle`，用 `includeSource` 按装配清单组合，位置可用 `-Pkizuna.dir.<清单 id>` 改指，版本取版本目录 `libs`。`local.meridian:*` 是框架的本地替换键，不是发布坐标；Damage 与功法库是模组依赖，替换键用其工程的真实坐标，因为 Loom 按真实坐标重新加入模组的传递库。
+需要 Java 17、Minecraft 1.20.1、Fabric Loader 0.16.10、Fabric API 0.92.3+1.20.1。相邻仓库 Framework、Vanilla Damage Addon 通过 Gradle composite build 接入，Damage 依赖的功法库由 Damage 自己的 settings 嵌套组合：`settings.gradle` 应用 Framework 的 `scripts/workspace.gradle`，用 `includeSource` 按装配清单组合，位置可用 `-Pkizuna.dir.<清单 id>` 改指，版本取版本目录 `libs`。`local.meridian:*` 是框架的本地替换键，不是发布坐标；Damage 是模组依赖，替换键用其工程的真实坐标，因为 Loom 按真实坐标重新加入模组的传递库。
 
 ```sh
 ./gradlew build
