@@ -8,11 +8,14 @@ import dev.kizuna.meridian.protocol.pb.BodyMessages.BodySnapshot;
 import dev.kizuna.meridian.protocol.pb.HealthMessages.PartHealthLimit;
 import dev.kizuna.meridian.protocol.pb.HealthMessages.SetPartHealthLimits;
 import dev.kizuna.meridian.protocol.pb.MeridianMessages.BodyCommand;
+import dev.kizuna.meridian.protocol.pb.MeridianMessages.FailureCode;
 import dev.kizuna.meridian.server.BodyHealthHost;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +36,12 @@ public final class HealingFabric implements ModInitializer {
         // 与伤害附属共用公开宿主发现，单机与专服使用相同服务端规则。
         config = HealingConfig.load(FabricLoader.getInstance().getConfigDir().resolve("meridian-vanilla-healing.toml"));
         bridge = new HealingBridge(FabricLoader.getInstance().getEntrypoints("meridian_health_host", BodyHealthHost.class));
+        ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+            // 等其他宿主完成入世认领，再由实体首次 tick 执行同步。
+            if (entity instanceof LivingEntity living) {
+                ((HealingEntityAccess) living).meridian$markRefreshPending();
+            }
+        });
     }
 
     public static HealingConfig config() {
@@ -41,11 +50,23 @@ public final class HealingFabric implements ModInitializer {
     }
 
     public static Optional<HealingBridge.Binding> inspect(LivingEntity entity) {
-        // 客户端只显示同步结果；构造与存档载入阶段也不能写身体账本。
-        if (entity.getWorld().isClient || ((HealingEntityAccess) entity).meridian$loadingEffects()) {
+        // 世界生成和未入世实体只保留本地 NBT，不能触碰主线程身体系统。
+        if (!canSynchronize(entity)) {
             return Optional.empty();
         }
+        if (((HealingEntityAccess) entity).meridian$healthPaused()) {
+            throw new HealingErrors.HostRejected(FailureCode.BODY_PAUSED);
+        }
         return bridge.inspect(entity.getUuidAsString());
+    }
+
+    private static boolean canSynchronize(LivingEntity entity) {
+        // 先检查线程再查询实体索引，避免工作线程读取服务器集合。
+        if (!(entity.getWorld() instanceof ServerWorld world) || !world.getServer().isOnThread()) {
+            return false;
+        }
+        return !((HealingEntityAccess) entity).meridian$loadingEffects()
+                && world.getEntity(entity.getUuid()) == entity && !entity.isRemoved();
     }
 
     public static boolean interceptHeal(LivingEntity entity, float vanillaHp) {
@@ -74,6 +95,9 @@ public final class HealingFabric implements ModInitializer {
 
     public static double heal(LivingEntity entity, HealingBridge.Binding binding, double vanillaHp) {
         // 先计算可治疗部分，再请求核心；饥饿消耗只使用已提交的实际回血量。
+        if (!canSynchronize(entity)) {
+            return 0;
+        }
         BodySnapshot body = binding.body();
         if (!Double.isFinite(vanillaHp) || vanillaHp <= 0 || body.getVitality().getDead()) {
             sync(entity, body);
@@ -108,6 +132,9 @@ public final class HealingFabric implements ModInitializer {
 
     public static void sync(LivingEntity entity, BodySnapshot body) {
         // 血条按全身部位 HP 比例显示；临时黄心总量只作为视觉汇总。
+        if (!canSynchronize(entity)) {
+            return;
+        }
         var access = (HealingEntityAccess) entity;
         access.meridian$effects().bind(body);
         double maximum = HealingRules.partMaximum(body);
@@ -130,8 +157,12 @@ public final class HealingFabric implements ModInitializer {
 
     public static void refresh(LivingEntity entity) {
         // 每秒及效果边界对齐显示；没有差异时只查询，不产生核心 apply 或回执。
+        if (!canSynchronize(entity) || ((HealingEntityAccess) entity).meridian$healthPaused()) {
+            return;
+        }
         try {
             Optional<HealingBridge.Binding> binding = inspect(entity);
+            ((HealingEntityAccess) entity).meridian$clearRefreshPending();
             if (binding.isEmpty()) {
                 return;
             }
@@ -218,7 +249,7 @@ public final class HealingFabric implements ModInitializer {
 
     public static void beginDamage(LivingEntity entity) {
         // 上下文只在同步伤害调用栈中存活，不缓存世界实体或另建身份注册表。
-        if (!entity.getWorld().isClient) {
+        if (canSynchronize(entity)) {
             DAMAGE_STACK.get().push(entity);
         }
     }
@@ -243,7 +274,24 @@ public final class HealingFabric implements ModInitializer {
     }
 
     public static void report(LivingEntity entity, RuntimeException failure) {
-        // 错误统一附带服务端身份，不把异常细节发送给客户端。
+        // 暂停只告警一次并停止自动查询，其他故障也只记录首个堆栈。
+        if (!canSynchronize(entity)) {
+            return;
+        }
+        var access = (HealingEntityAccess) entity;
+        if (failure instanceof HealingErrors.HostRejected rejected && rejected.code() == FailureCode.BODY_PAUSED) {
+            access.meridian$pauseHealth();
+            access.meridian$clearRefreshPending();
+            if (!access.meridian$failureReported()) {
+                access.meridian$markFailureReported();
+                LOGGER.warn(HealingErrors.BODY_PAUSED + " subject={}", entity.getUuidAsString());
+            }
+            return;
+        }
+        if (access.meridian$failureReported()) {
+            return;
+        }
+        access.meridian$markFailureReported();
         LOGGER.error(HealingErrors.HEAL_FAILED + " subject=" + entity.getUuidAsString(), failure);
     }
 }

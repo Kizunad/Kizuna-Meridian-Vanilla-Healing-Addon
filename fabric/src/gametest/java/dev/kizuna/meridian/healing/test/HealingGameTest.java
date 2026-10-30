@@ -1,6 +1,15 @@
 package dev.kizuna.meridian.healing.test;
 
-import dev.kizuna.meridian.core.*;
+import dev.kizuna.meridian.core.Anatomy;
+import dev.kizuna.meridian.core.AnatomyState;
+import dev.kizuna.meridian.core.BodyId;
+import dev.kizuna.meridian.core.BodySnapshot;
+import dev.kizuna.meridian.core.BodyStructure;
+import dev.kizuna.meridian.core.BodyTemplate;
+import dev.kizuna.meridian.core.DefinitionId;
+import dev.kizuna.meridian.core.Realm;
+import dev.kizuna.meridian.core.TimeCursor;
+import dev.kizuna.meridian.core.VitalityState;
 import dev.kizuna.meridian.healing.HealingRules;
 import dev.kizuna.meridian.healing.fabric.HealingEntityAccess;
 import dev.kizuna.meridian.healing.fabric.HealingFabric;
@@ -8,6 +17,8 @@ import dev.kizuna.meridian.protocol.BodyProtobuf;
 import dev.kizuna.meridian.protocol.HealthHostProtobuf;
 import dev.kizuna.meridian.protocol.MeridianProtocol;
 import dev.kizuna.meridian.protocol.pb.HealthHostMessages.HealthHostResponse;
+import dev.kizuna.meridian.protocol.pb.MeridianMessages.FailureCode;
+import dev.kizuna.meridian.protocol.pb.MeridianMessages.RequestFailure;
 import dev.kizuna.meridian.protocol.pb.MeridianMessages.TimeAdvanceMode;
 import dev.kizuna.meridian.protocol.pb.MeridianMessages.TimeAdvancePlan;
 import dev.kizuna.meridian.server.BodyCommandHandler;
@@ -31,11 +42,21 @@ import net.minecraft.world.Difficulty;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** 真实原版事件、伤害附属与核心账本的整体回归，样例内容不进入发布包。 */
 public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
     private static final InMemoryBodyStore STORE = new InMemoryBodyStore(List.of(), List.of());
-    private static final java.util.Set<String> REJECTED_SUBJECTS = new java.util.HashSet<>();
+    private static final Set<String> REJECTED_SUBJECTS = new HashSet<>();
+    private static final Set<String> PAUSED_SUBJECTS = new HashSet<>();
+    private static final AtomicInteger HOST_QUERIES = new AtomicInteger();
+    private static final int PAUSED_TICKS = 41;
+    private static final int EFFECT_TICKS = 100;
+    private static final double DAMAGED_PART_HP = 40;
+    private static final double DAMAGED_RATIO = 0.4;
     private static final BodyCommandHandler<String> COMMANDS = new BodyCommandHandler<>(
             (caller, command) -> Optional.of(caller), (caller, command, body) -> true,
             (caller, body) -> TimeAdvancePlan.newBuilder().setTarget(BodyProtobuf.toTime(body.settledAt()))
@@ -43,30 +64,78 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
             STORE, (caller, receipt, previous, updated) -> { /* 断言读取实际已提交身体。 */ });
 
     @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
-    public void workerConstructionInitializesHealthAndPreservesHostThreadChecks(TestContext context) {
+    public void workerNbtDefersHostAccessUntilEntityEntersWorld(TestContext context) {
         // 下界生成会在工作线程构造炽足兽；构造期初始血量必须完整建立。
-        var entity = java.util.concurrent.CompletableFuture.supplyAsync(
+        int beforeConstruction = HOST_QUERIES.get();
+        var strider = CompletableFuture.supplyAsync(
                 () -> EntityType.STRIDER.create(context.getWorld())).join();
-        context.assertTrue(entity != null, "实际构造炽足兽");
-        close(context, entity.getHealth(), entity.getMaxHealth(), "工作线程构造保留初始满血");
-        context.assertTrue(!((HealingEntityAccess) entity).meridian$internalHealth(), "构造后恢复权威健康拦截");
+        context.assertTrue(strider != null, "实际构造炽足兽");
+        close(context, strider.getHealth(), strider.getMaxHealth(), "工作线程构造保留初始满血");
+        context.assertTrue(!((HealingEntityAccess) strider).meridian$internalHealth(), "构造后恢复权威健康拦截");
+        context.assertTrue(HOST_QUERIES.get() == beforeConstruction, "构造期不能查询宿主");
+        verifyDeferredGolem(context);
+        context.complete();
+    }
 
-        // 运行期查询仍需通过 Human 的主线程校验，不能以构造修复为由吞掉拒绝。
-        boolean rejected = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-            try {
-                HealingFabric.inspect(entity);
-                return false;
-            } catch (IllegalArgumentException expected) {
-                return true;
+    private static void verifyDeferredGolem(TestContext context) {
+        // 带实际临时效果的铁傀儡存档在工作线程读取，余额只在入世后的主线程投影。
+        var original = context.spawnEntity(EntityType.IRON_GOLEM, 1, 2, 1);
+        bind(original, DAMAGED_PART_HP, DAMAGED_PART_HP);
+        original.addStatusEffect(new StatusEffectInstance(StatusEffects.ABSORPTION, EFFECT_TICKS, 0));
+        NbtCompound saved = new NbtCompound();
+        original.writeCustomDataToNbt(saved);
+        int beforeRead = HOST_QUERIES.get();
+        var restored = CompletableFuture.supplyAsync(() -> {
+            var golem = EntityType.IRON_GOLEM.create(context.getWorld());
+            golem.readCustomDataFromNbt(saved);
+            HealingFabric.refresh(golem);
+            if (HealingFabric.inspect(golem).isPresent()) {
+                throw new AssertionError("工作线程不能认领身体");
             }
+            return golem;
         }).join();
-        context.assertTrue(rejected, "运行期异步健康查询仍明确失败");
+        HealingFabric.refresh(restored);
+        context.assertTrue(HOST_QUERIES.get() == beforeRead, "异步或未入世 NBT 不得查询宿主");
+        var access = (HealingEntityAccess) restored;
+        context.assertTrue(access.meridian$refreshPending(), "NBT 未保留待刷新标记");
+        registerBody(restored, DAMAGED_PART_HP, DAMAGED_PART_HP);
+        context.assertTrue(context.getWorld().spawnEntity(restored), "铁傀儡成功加入世界");
+        restored.tick();
+        context.assertTrue(!access.meridian$refreshPending(), "首次主线程 tick 未完成同步");
+        close(context, restored.getHealth(), restored.getMaxHealth() * DAMAGED_RATIO, "入世后投影身体比例");
+        close(context, restored.getAbsorptionAmount(), original.getAbsorptionAmount(), "NBT 保留临时黄心余额");
+        restored.setHealth(restored.getMaxHealth());
+        close(context, hp(restored, 0), DAMAGED_PART_HP, "运行期 setter 不得绕过身体");
+    }
 
-        // 同一实体完成绑定后，第三方 setter 继续只能投影身体 HP。
-        bind(entity, 40, 40);
-        entity.setHealth(entity.getMaxHealth());
-        close(context, hp(entity, 0) + hp(entity, 1), 80, "初始赋值路径不泄漏到运行期");
-        close(context, entity.getHealth(), entity.getMaxHealth() * .4, "血条由身体比例决定");
+    @GameTest(templateName = FabricGameTest.EMPTY_STRUCTURE)
+    public void pausedBodyStopsQueriesAndBlocksVanillaHealing(TestContext context) {
+        // 暂停只查询和报告一次，后续 tick、治疗与 setter 都不能回落原版账本。
+        var player = context.createMockSurvivalPlayer();
+        bind(player, DAMAGED_PART_HP, DAMAGED_PART_HP);
+        float displayedHp = player.getHealth();
+        long revision = body(player).revision();
+        float exhaustion = player.getHungerManager().getExhaustion();
+        PAUSED_SUBJECTS.add(player.getUuidAsString());
+        int beforePause = HOST_QUERIES.get();
+        try {
+            HealingFabric.refresh(player);
+            for (int tick = 0; tick < PAUSED_TICKS; tick++) {
+                HealingFabric.refresh(player);
+                player.heal(1);
+                player.setHealth(player.getMaxHealth());
+                player.tick();
+            }
+            var access = (HealingEntityAccess) player;
+            context.assertTrue(access.meridian$healthPaused(), "暂停状态未保留");
+            context.assertTrue(access.meridian$failureReported(), "暂停没有首次告警");
+            context.assertTrue(HOST_QUERIES.get() == beforePause + 1, "暂停后仍查询宿主");
+            close(context, player.getHealth(), displayedHp, "暂停不能回落原版回血");
+            close(context, body(player).revision(), revision, "暂停不能提交身体变化");
+            close(context, player.getHungerManager().getExhaustion(), exhaustion, "未回血不收费");
+        } finally {
+            PAUSED_SUBJECTS.remove(player.getUuidAsString());
+        }
         context.complete();
     }
 
@@ -311,11 +380,17 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
     public byte[] exchange(byte[] payload) {
         // 仅认领测试中登记的实体，实际操作经过正式命令处理器和事务存储。
         var request = HealthHostProtobuf.decodeRequest(payload);
-        var response = HealthHostResponse.newBuilder().setProtocolVersion(1).setRequestId(request.getRequestId());
+        HOST_QUERIES.incrementAndGet();
+        var response = HealthHostResponse.newBuilder()
+                .setProtocolVersion(1)
+                .setRequestId(request.getRequestId());
+        if (PAUSED_SUBJECTS.contains(request.getSubjectId())) {
+            RequestFailure failure = RequestFailure.newBuilder().setCode(FailureCode.BODY_PAUSED).build();
+            return HealthHostProtobuf.encodeResponse(response.setFailure(failure).build());
+        }
         if (REJECTED_SUBJECTS.contains(request.getSubjectId())) {
-            return HealthHostProtobuf.encodeResponse(response.setFailure(
-                    dev.kizuna.meridian.protocol.pb.MeridianMessages.RequestFailure.newBuilder()
-                            .setCode(dev.kizuna.meridian.protocol.pb.MeridianMessages.FailureCode.INTERNAL_ERROR)).build());
+            RequestFailure failure = RequestFailure.newBuilder().setCode(FailureCode.INTERNAL_ERROR).build();
+            return HealthHostProtobuf.encodeResponse(response.setFailure(failure).build());
         }
         var found = STORE.find(new BodyId(request.getSubjectId()));
         if (found.isEmpty()) {
@@ -335,6 +410,15 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
     }
 
     private static void bind(LivingEntity entity, double... hp) {
+        // 使用真实入世实体验证运行期门禁，未加入世界的对象不能触发身体同步。
+        registerBody(entity, hp);
+        if (entity.getWorld().getEntityById(entity.getId()) != entity) {
+            entity.getWorld().spawnEntity(entity);
+        }
+        HealingFabric.refresh(entity);
+    }
+
+    private static void registerBody(LivingEntity entity, double... hp) {
         // 任意部位数的非人体构型，保护框架独立性及宿主协议边界。
         var parts = new ArrayList<Anatomy.PartDefinition>();
         var states = new ArrayList<AnatomyState.Part>();
@@ -348,7 +432,6 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
                 new BodyTemplate.Reference(new DefinitionId("sample:creature"), 1), structure, Realm.WANDERING_QI,
                 states, List.of(), List.of(), List.of(), List.of(), new VitalityState(0, 1000, 0, false),
                 new TimeCursor(new DefinitionId("sample:world"), "epoch", 0), 0));
-        HealingFabric.refresh(entity);
     }
 
     private static BodySnapshot body(LivingEntity entity) {

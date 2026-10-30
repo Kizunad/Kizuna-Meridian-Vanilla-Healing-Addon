@@ -19,9 +19,55 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
+    @Unique private static final int MERIDIAN_SYNC_TICKS = 20;
     @Unique private TemporaryHealthState meridian$effects = new TemporaryHealthState();
     @Unique private boolean meridian$internalHealth;
     @Unique private boolean meridian$loading;
+    @Unique private boolean meridian$refreshPending = true;
+    @Unique private boolean meridian$healthPaused;
+    @Unique private boolean meridian$failureReported;
+
+    @Override
+    public boolean meridian$refreshPending() {
+        // 存档和实体入世后的首次刷新不等待整秒边界。
+        return meridian$refreshPending;
+    }
+
+    @Override
+    public void meridian$markRefreshPending() {
+        // 这里只记录实体本地意图，不查询身体宿主。
+        meridian$refreshPending = true;
+    }
+
+    @Override
+    public void meridian$clearRefreshPending() {
+        // 仅在服务端主线程已完成归属检查后确认本次刷新。
+        meridian$refreshPending = false;
+    }
+
+    @Override
+    public boolean meridian$healthPaused() {
+        // 暂停状态跟随当前实体连接，重新登录使用新的实体重新认领。
+        return meridian$healthPaused;
+    }
+
+    @Override
+    public void meridian$pauseHealth() {
+        // 已暂停的身体封住原版治疗旁路，并停止后续宿主查询。
+        meridian$healthPaused = true;
+    }
+
+    @Override
+    public boolean meridian$failureReported() {
+        // 同一实体的同步故障只报告一次，避免每 tick 输出堆栈。
+        return meridian$failureReported;
+    }
+
+    @Override
+    public void meridian$markFailureReported() {
+        // 错误记录归实体所有，不在全局表中保留已卸载实体。
+        meridian$failureReported = true;
+    }
 
     @Override
     public TemporaryHealthState meridian$effects() {
@@ -79,7 +125,7 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     private void meridian$syncHealth(CallbackInfo callback) {
         // 展示每秒对齐一次，治疗、伤害和效果变更另有即时更新入口。
         LivingEntity entity = (LivingEntity) (Object) this;
-        if (entity.age % 20 == 0) {
+        if (meridian$refreshPending || entity.age % MERIDIAN_SYNC_TICKS == 0) {
             HealingFabric.refresh(entity);
         }
     }
@@ -169,7 +215,7 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
         } finally {
             meridian$loading = false;
         }
-        HealingFabric.refresh((LivingEntity) (Object) this);
+        meridian$markRefreshPending();
     }
 
     @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))

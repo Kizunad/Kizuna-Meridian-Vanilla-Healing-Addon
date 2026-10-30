@@ -60,8 +60,11 @@ public final class HealingBridge {
         // 不把协议拒绝视为未绑定，避免核心失败后依然产生原版回血。
         HealthHostResponse response = HealthHostProtobuf.decodeResponse(
                 host.exchange(HealthHostProtobuf.encodeRequest(request)));
-        if (!response.getRequestId().equals(request.getRequestId()) || response.hasFailure()) {
+        if (!response.getRequestId().equals(request.getRequestId())) {
             throw HealingErrors.invalid(HealingErrors.HOST);
+        }
+        if (response.hasFailure()) {
+            throw new HealingErrors.HostRejected(response.getFailure().getCode());
         }
         return response;
     }

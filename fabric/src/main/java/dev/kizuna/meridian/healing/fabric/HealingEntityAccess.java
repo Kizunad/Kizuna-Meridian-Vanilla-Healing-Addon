@@ -8,4 +8,11 @@ public interface HealingEntityAccess {
     boolean meridian$internalHealth();
     void meridian$internalHealth(boolean internal);
     boolean meridian$loadingEffects();
+    boolean meridian$refreshPending();
+    void meridian$markRefreshPending();
+    void meridian$clearRefreshPending();
+    boolean meridian$healthPaused();
+    void meridian$pauseHealth();
+    boolean meridian$failureReported();
+    void meridian$markFailureReported();
 }
