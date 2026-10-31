@@ -54,6 +54,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static dev.kizuna.meridian.healing.test.HealingGameTestTicks.DEFAULT_TIMEOUT;
+
 /** 真实原版事件、伤害附属与核心账本的整体回归，样例内容不进入发布包。 */
 public final class HealingGameTest implements BodyHealthHost {
     private static final InMemoryBodyStore STORE = new InMemoryBodyStore(List.of(), List.of());
@@ -70,7 +72,7 @@ public final class HealingGameTest implements BodyHealthHost {
                     .setMode(TimeAdvanceMode.ACTIVE).setBiologicalSecondsPerSimulationSecond(1).build(),
             STORE, (caller, receipt, previous, updated) -> { /* 断言读取实际已提交身体。 */ });
 
-    @GameTest
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
     public void workerNbtDefersHostAccessUntilEntityEntersWorld(GameTestHelper context) {
         // 下界生成会在工作线程构造炽足兽；构造期初始血量必须完整建立。
         int beforeConstruction = HOST_QUERIES.get();
@@ -116,7 +118,7 @@ public final class HealingGameTest implements BodyHealthHost {
         close(context, hp(restored, 0), DAMAGED_PART_HP, "运行期 setter 不得绕过身体");
     }
 
-    @GameTest
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
     public void pausedBodyStopsQueriesAndBlocksVanillaHealing(GameTestHelper context) {
         // 暂停只查询和报告一次，后续 tick、治疗与 setter 都不能回落原版账本。
         var player = TestPlayers.detached(context.getLevel(), "healing_paused");
@@ -147,7 +149,7 @@ public final class HealingGameTest implements BodyHealthHost {
         context.succeed();
     }
 
-    @GameTest
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
     public void healingAndEffectsUseBodyHpWithoutRestoringDestroyedParts(GameTestHelper context) {
         // heal、瞬间治疗和生命恢复都走同一身体治疗入口，过量重新分配。
         var player = context.makeMockPlayer(GameType.SURVIVAL);
@@ -205,7 +207,7 @@ public final class HealingGameTest implements BodyHealthHost {
         context.succeed();
     }
 
-    @GameTest
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
     public void rejectedHostStopsEffectsWithoutCrashingPlayerTickOrVanillaHealing(GameTestHelper context) {
         // 模拟已认领身体在结算时失败，实际执行饥饿、和平回血和效果 mixin。
         var player = TestPlayers.detached(context.getLevel(), "healing_reject");
@@ -232,7 +234,7 @@ public final class HealingGameTest implements BodyHealthHost {
         context.succeed();
     }
 
-    @GameTest
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
     public void localShieldsPersistAndTotemPreventsBodyDeath(GameTestHelper context) {
         // 黄心先完全吸收一击，不产生身体事务；再次授予后验证局部余额不能互借。
         var player = context.makeMockPlayer(GameType.SURVIVAL);
@@ -286,7 +288,7 @@ public final class HealingGameTest implements BodyHealthHost {
         context.succeed();
     }
 
-    @GameTest
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
     public void naturalHealingHalvesDoseAndChargesActualRecovery(GameTestHelper context) {
         // 保留原版十tick饱和回血条件，回复0.5而不是1，exhaustion应为3。
         var player = TestPlayers.detached(context.getLevel(), "healing_natural");
@@ -340,7 +342,7 @@ public final class HealingGameTest implements BodyHealthHost {
         context.succeed();
     }
 
-    @GameTest
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
     public void peacefulHealingRespectsDifficultyAndWorldRule(GameTestHelper context) {
         // 全部调用在同一服务器任务内完成，结束前还原世界设置，不影响其他测试。
         var player = TestPlayers.detached(context.getLevel(), "healing_peace");
