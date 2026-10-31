@@ -13,10 +13,10 @@ import dev.kizuna.meridian.server.BodyHealthHost;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.world.GameRules;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.ArrayDeque;
@@ -57,16 +57,16 @@ public final class HealingFabric implements ModInitializer {
         if (((HealingEntityAccess) entity).meridian$healthPaused()) {
             throw new HealingErrors.HostRejected(FailureCode.BODY_PAUSED);
         }
-        return bridge.inspect(entity.getUuidAsString());
+        return bridge.inspect(entity.getStringUUID());
     }
 
     private static boolean canSynchronize(LivingEntity entity) {
         // 先检查线程再查询实体索引，避免工作线程读取服务器集合。
-        if (!(entity.getWorld() instanceof ServerWorld world) || !world.getServer().isOnThread()) {
+        if (!(entity.level() instanceof ServerLevel world) || !world.getServer().isSameThread()) {
             return false;
         }
         return !((HealingEntityAccess) entity).meridian$loadingEffects()
-                && world.getEntity(entity.getUuid()) == entity && !entity.isRemoved();
+                && world.getEntity(entity.getUUID()) == entity && !entity.isRemoved();
     }
 
     public static boolean interceptHeal(LivingEntity entity, float vanillaHp) {
@@ -168,7 +168,7 @@ public final class HealingFabric implements ModInitializer {
             }
             var state = ((HealingEntityAccess) entity).meridian$effects();
             state.bind(binding.get().body());
-            var effect = entity.getStatusEffect(StatusEffects.ABSORPTION);
+            var effect = entity.getEffect(MobEffects.ABSORPTION);
             int level = 0;
             if (effect != null) {
                 level = effect.getAmplifier() + 1;
@@ -190,8 +190,8 @@ public final class HealingFabric implements ModInitializer {
         // 用本附属旧增量还原基准；新增容量不送血，撤销时由核心裁剪超额 HP。
         BodySnapshot body = binding.body();
         // 原版 NBT 可以直接载入属性修正；仅移除此效果的修正，保留装备与其他模组来源。
-        StatusEffects.HEALTH_BOOST.getAttributeModifiers().forEach((attribute, modifier) -> {
-            var instance = entity.getAttributeInstance(attribute);
+        MobEffects.HEALTH_BOOST.getAttributeModifiers().forEach((attribute, modifier) -> {
+            var instance = entity.getAttribute(attribute);
             if (instance != null) {
                 instance.removeModifier(modifier.getId());
             }
@@ -200,7 +200,7 @@ public final class HealingFabric implements ModInitializer {
             return body;
         }
         var state = ((HealingEntityAccess) entity).meridian$effects();
-        var effect = entity.getStatusEffect(StatusEffects.HEALTH_BOOST);
+        var effect = entity.getEffect(MobEffects.HEALTH_BOOST);
         double totalGrant = 0;
         if (config.healthBoostChangesLimits() && effect != null) {
             totalGrant = 4.0 * (effect.getAmplifier() + 1) * config.hpPerVanillaHp();
@@ -244,7 +244,7 @@ public final class HealingFabric implements ModInitializer {
 
     public static boolean naturalRegeneration(GameRules rules) {
         // 默认尊重世界规则；关闭此配置仅使已绑定实体的回血忽略该游戏规则。
-        return !config.respectNaturalRegeneration() || rules.getBoolean(GameRules.NATURAL_REGENERATION);
+        return !config.respectNaturalRegeneration() || rules.getBoolean(GameRules.RULE_NATURAL_REGENERATION);
     }
 
     public static void beginDamage(LivingEntity entity) {
@@ -256,7 +256,7 @@ public final class HealingFabric implements ModInitializer {
 
     public static void endDamage(LivingEntity entity) {
         // 嵌套伤害逐层退出，避免内层覆盖外层的图腾和局部黄心状态。
-        if (!entity.getWorld().isClient) {
+        if (!entity.level().isClientSide) {
             Deque<LivingEntity> entities = DAMAGE_STACK.get();
             if (!entities.isEmpty() && entities.peek() == entity) {
                 entities.pop();
@@ -269,7 +269,7 @@ public final class HealingFabric implements ModInitializer {
 
     static LivingEntity damageEntity(String subjectId) {
         // 集成请求只能操作当前调用栈里的同一实体，不能借可信入口改动旁人效果。
-        return DAMAGE_STACK.get().stream().filter(entity -> entity.getUuidAsString().equals(subjectId))
+        return DAMAGE_STACK.get().stream().filter(entity -> entity.getStringUUID().equals(subjectId))
                 .findFirst().orElseThrow(() -> HealingErrors.invalid(HealingErrors.HOST));
     }
 
@@ -284,7 +284,7 @@ public final class HealingFabric implements ModInitializer {
             access.meridian$clearRefreshPending();
             if (!access.meridian$failureReported()) {
                 access.meridian$markFailureReported();
-                LOGGER.warn(HealingErrors.BODY_PAUSED + " subject={}", entity.getUuidAsString());
+                LOGGER.warn(HealingErrors.BODY_PAUSED + " subject={}", entity.getStringUUID());
             }
             return;
         }
@@ -292,6 +292,6 @@ public final class HealingFabric implements ModInitializer {
             return;
         }
         access.meridian$markFailureReported();
-        LOGGER.error(HealingErrors.HEAL_FAILED + " subject=" + entity.getUuidAsString(), failure);
+        LOGGER.error(HealingErrors.HEAL_FAILED + " subject=" + entity.getStringUUID(), failure);
     }
 }

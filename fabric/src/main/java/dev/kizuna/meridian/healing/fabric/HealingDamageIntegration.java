@@ -4,7 +4,7 @@ import dev.kizuna.meridian.healing.HealingRules;
 import dev.kizuna.meridian.protocol.DamageIntegrationProtobuf;
 import dev.kizuna.meridian.protocol.pb.HealthHostMessages.DamageIntegrationPlan;
 import dev.kizuna.meridian.server.BodyDamageIntegration;
-import net.minecraft.item.Items;
+import net.minecraft.world.item.Items;
 
 /** 伤害目标已固定后，提供局部黄心和原版图腾的单次效果方案。 */
 public final class HealingDamageIntegration implements BodyDamageIntegration {
@@ -20,8 +20,8 @@ public final class HealingDamageIntegration implements BodyDamageIntegration {
         var plan = DamageIntegrationPlan.newBuilder().setHandled(true).setRemainingDamageHp(remaining);
 
         // 图腾只有在本次伤害最终致死时才被核心使用；虚空等来源仍遵守原版禁用标签。
-        boolean holdingTotem = entity.getMainHandStack().isOf(Items.TOTEM_OF_UNDYING)
-                || entity.getOffHandStack().isOf(Items.TOTEM_OF_UNDYING);
+        boolean holdingTotem = entity.getMainHandItem().is(Items.TOTEM_OF_UNDYING)
+                || entity.getOffhandItem().is(Items.TOTEM_OF_UNDYING);
         var config = HealingFabric.config();
         if (remaining > 0 && config.totemEnabled() && holdingTotem && !context.getBypassesDeathProtection()) {
             plan.setDeathProtection(HealingRules.totemProtection(context.getBody(), config.totemMinimumRatio()));

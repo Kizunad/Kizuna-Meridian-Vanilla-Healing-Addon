@@ -3,12 +3,12 @@ package dev.kizuna.meridian.healing.fabric.mixin;
 import dev.kizuna.meridian.healing.TemporaryHealthState;
 import dev.kizuna.meridian.healing.fabric.HealingEntityAccess;
 import dev.kizuna.meridian.healing.fabric.HealingFabric;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -93,7 +93,7 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
         return meridian$loading;
     }
 
-    @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;setHealth(F)V"))
+    @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;setHealth(F)V"))
     private void meridian$initializeHealth(LivingEntity entity, float health) {
         // 区块生成线程也会构造生物；此时只初始化实体血条，尚未进入身体宿主的运行期。
         meridian$internalHealth = true;
@@ -125,48 +125,48 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     private void meridian$syncHealth(CallbackInfo callback) {
         // 展示每秒对齐一次，治疗、伤害和效果变更另有即时更新入口。
         LivingEntity entity = (LivingEntity) (Object) this;
-        if (meridian$refreshPending || entity.age % MERIDIAN_SYNC_TICKS == 0) {
+        if (meridian$refreshPending || entity.tickCount % MERIDIAN_SYNC_TICKS == 0) {
             HealingFabric.refresh(entity);
         }
     }
 
-    @Inject(method = "onStatusEffectApplied", at = @At("TAIL"))
-    private void meridian$boostApplied(StatusEffectInstance effect, Entity source, CallbackInfo callback) {
+    @Inject(method = "onEffectAdded", at = @At("TAIL"))
+    private void meridian$boostApplied(MobEffectInstance effect, Entity source, CallbackInfo callback) {
         // 等效果进入原版效果表再更新身体上限，避免晚一秒才显示新上限。
-        if (effect.getEffectType() == StatusEffects.HEALTH_BOOST) {
+        if (effect.getEffect() == MobEffects.HEALTH_BOOST) {
             HealingFabric.refresh((LivingEntity) (Object) this);
         }
     }
 
-    @Inject(method = "onStatusEffectUpgraded", at = @At("TAIL"))
-    private void meridian$boostUpgraded(StatusEffectInstance effect, boolean reapply, Entity source, CallbackInfo callback) {
+    @Inject(method = "onEffectUpdated", at = @At("TAIL"))
+    private void meridian$boostUpgraded(MobEffectInstance effect, boolean reapply, Entity source, CallbackInfo callback) {
         // 同级刷新与升级共用本附属增量记录，不重复叠加上限。
-        if (effect.getEffectType() == StatusEffects.HEALTH_BOOST) {
+        if (effect.getEffect() == MobEffects.HEALTH_BOOST) {
             HealingFabric.refresh((LivingEntity) (Object) this);
         }
     }
 
-    @Inject(method = "onStatusEffectRemoved", at = @At("TAIL"))
-    private void meridian$boostRemoved(StatusEffectInstance effect, CallbackInfo callback) {
+    @Inject(method = "onEffectRemoved", at = @At("TAIL"))
+    private void meridian$boostRemoved(MobEffectInstance effect, CallbackInfo callback) {
         // 移除通知发生在效果表更新后，立即撤销上限并裁剪超额 HP。
-        if (effect.getEffectType() == StatusEffects.HEALTH_BOOST) {
+        if (effect.getEffect() == MobEffects.HEALTH_BOOST) {
             HealingFabric.refresh((LivingEntity) (Object) this);
         }
     }
 
-    @Inject(method = "damage", at = @At("HEAD"))
+    @Inject(method = "hurt", at = @At("HEAD"))
     private void meridian$enterDamage(DamageSource source, float amount, CallbackInfoReturnable<Boolean> callback) {
         // 为固定命中后的可信集成提供同步实体上下文。
         HealingFabric.beginDamage((LivingEntity) (Object) this);
     }
 
-    @Inject(method = "damage", at = @At("RETURN"))
+    @Inject(method = "hurt", at = @At("RETURN"))
     private void meridian$leaveDamage(DamageSource source, float amount, CallbackInfoReturnable<Boolean> callback) {
         // 包括无敌帧和盾牌拒绝的早退路径，均释放上下文。
         HealingFabric.endDamage((LivingEntity) (Object) this);
     }
 
-    @Redirect(method = "applyDamage", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;getAbsorptionAmount()F"))
+    @Redirect(method = "actuallyHurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;getAbsorptionAmount()F"))
     private float meridian$skipGlobalShield(LivingEntity entity) {
         // 已绑定实体的黄心由命中部位结算，原版阶段必须看见零全局余额。
         if (HealingFabric.blocksVanillaHealth(entity)) {
@@ -175,15 +175,15 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
         return entity.getAbsorptionAmount();
     }
 
-    @Redirect(method = "applyDamage", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;setAbsorptionAmount(F)V"))
+    @Redirect(method = "actuallyHurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;setAbsorptionAmount(F)V"))
     private void meridian$preserveLocalShield(LivingEntity entity, float amount) {
-        // 原版 applyDamage 有多处全局扣黄心，均不能改写局部汇总显示。
+        // 原版 actuallyHurt 有多处全局扣黄心，均不能改写局部汇总显示。
         if (!HealingFabric.blocksVanillaHealth(entity)) {
             entity.setAbsorptionAmount(amount);
         }
     }
 
-    @Inject(method = "tryUseTotem", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "checkTotemDeathProtection", at = @At("HEAD"), cancellable = true)
     private void meridian$preventLateTotem(DamageSource source, CallbackInfoReturnable<Boolean> callback) {
         // 身体已死亡说明此次没有批准保命，不能事后只复活原版血条。
         LivingEntity entity = (LivingEntity) (Object) this;
@@ -199,14 +199,14 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
         }
     }
 
-    @Inject(method = "readCustomDataFromNbt", at = @At("HEAD"))
-    private void meridian$beginRead(NbtCompound nbt, CallbackInfo callback) {
+    @Inject(method = "readAdditionalSaveData", at = @At("HEAD"))
+    private void meridian$beginRead(CompoundTag nbt, CallbackInfo callback) {
         // 原版会先加载全局黄心及药效；此期间不重新授予局部余额。
         meridian$loading = true;
     }
 
-    @Inject(method = "readCustomDataFromNbt", at = @At("TAIL"))
-    private void meridian$readEffects(NbtCompound nbt, CallbackInfo callback) {
+    @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
+    private void meridian$readEffects(CompoundTag nbt, CallbackInfo callback) {
         // 保存过的零余额同样恢复，不能因重连重置黄心。
         try {
             if (nbt.contains("MeridianHealingEffects")) {
@@ -218,8 +218,8 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
         meridian$markRefreshPending();
     }
 
-    @Inject(method = "writeCustomDataToNbt", at = @At("TAIL"))
-    private void meridian$writeEffects(NbtCompound nbt, CallbackInfo callback) {
+    @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
+    private void meridian$writeEffects(CompoundTag nbt, CallbackInfo callback) {
         // 保存 protoc 效果记录，与原版 ActiveEffects 同属实体存档。
         nbt.putByteArray("MeridianHealingEffects", meridian$effects.encode());
     }
