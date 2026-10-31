@@ -2,7 +2,7 @@
 
 ## 本地构建与安装
 
-需要 Java 17、Minecraft 1.20.1、Fabric Loader 0.16.10、Fabric API 0.92.3+1.20.1。相邻仓库 Framework、Vanilla Damage Addon 通过 Gradle composite build 接入，Damage 依赖的功法库由 Damage 自己的 settings 嵌套组合：`settings.gradle` 应用 Framework 的 `scripts/workspace.gradle`，用 `includeSource` 按装配清单组合，位置可用 `-Pkizuna.dir.<清单 id>` 改指，版本取版本目录 `libs`。`local.meridian:*` 是框架的本地替换键，不是发布坐标；Damage 是模组依赖，替换键用其工程的真实坐标，因为 Loom 按真实坐标重新加入模组的传递库。
+需要 Java 25、Minecraft 26.2、Fabric Loader 0.20.1、Fabric API 0.161.0+26.2。相邻仓库 Framework、Vanilla Damage Addon 通过 Gradle composite build 接入，Damage 依赖的功法库由 Damage 自己的 settings 嵌套组合：`settings.gradle` 应用 Framework 的 `scripts/workspace.gradle`，用 `includeSource` 按装配清单组合，位置可用 `-Pkizuna.dir.<清单 id>` 改指，版本取版本目录 `libs`。`local.meridian:*` 是框架的本地替换键，不是发布坐标；Damage fabric 按真实坐标声明依赖，替换键用其工程的真实坐标。
 
 ```sh
 ./gradlew build
@@ -12,7 +12,7 @@ python3 scripts/check_docs.py
 git diff --check
 ```
 
-安装 `fabric/build/libs/` 下不带 `dev` 或 `sources` 的重映射 JAR，Meridian 九仓按适用端整套必装并提供 Fabric API。开发运行统一应用 Framework 的 `scripts/full-assembly.gradle`，固定装配同级安装产物。Damage 不嵌套进本包；Framework 服务端库与纯规则依赖由构建嵌入。执行发生在服务器，单机由集成服务器处理。缺健康宿主启动时报错；已装配宿主明确返回实体未绑定时才走原版治疗。
+安装 `fabric/build/libs/` 下不带 `sources` 后缀的 JAR（26.2 不混淆，构建不重映射），Meridian 九仓按适用端整套必装并提供 Fabric API。开发运行统一应用 Framework 的 `scripts/full-assembly.gradle`，固定装配同级安装产物。Damage 不嵌套进本包；Framework 服务端库与纯规则依赖由构建嵌入。执行发生在服务器，单机由集成服务器处理。缺健康宿主启动时报错；已装配宿主明确返回实体未绑定时才走原版治疗。
 
 ## 跨附属协议
 
@@ -34,7 +34,7 @@ git diff --check
 
 整体回归覆盖均分守恒、满血溢出、零 HP 排除、配置和余额编码往返。GameTest 运行真实 Minecraft 服务端，经过 Mixins、Damage 及 Framework 实际命令事务；覆盖玩家与非玩家治疗、实际药水/金苹果消费、再生、直接 setter 拦截、局部黄心扣除、到期与牛奶、效果重载、生命提升、图腾、虚空、亡灵瞬间治疗伤害、自然回血及世界规则。
 
-构造生命周期回归在工作线程创建真实炽足兽及带黄心 NBT 的铁傀儡，检查初始满血、读 NBT 和异步调用均不查询宿主、未入世时不查询，入世后的首次 tick 正确投影 HP 与黄心。另验证暂停后跨多个刷新周期只查询一次，不回血、不改身体、不扣饥饿。
+构造生命周期回归在工作线程创建真实炽足兽及带黄心 NBT 的铁傀儡，检查初始满血、读 NBT 和异步调用均不查询宿主、未入世时不查询，入世后的首次 tick 正确投影 HP 与黄心。另验证暂停后跨多个刷新周期只查询一次，不回血、不改身体、不扣饥饿。饥饿与和平回血只在服务端玩家上执行，暂停、宿主拒绝、自然回血与和平回血用例的玩家取自功法库 `fabric` 的 `testFixtures`（`TestPlayers.detached`：正式网络处理器、不进玩家列表），经 Damage 组合的功法源码解析；其余玩家用例使用原版模拟玩家。
 
 2026-10-21 原仓 Java 17 构建及 2 项整体回归通过；默认与配置变体各 5 项 GameTest 通过。未修复版本在新增构造回归中只有 1/20 HP，其余四项通过；修复版本保留运行期线程与宿主校验。包含本修复的 Windows 完整装配另通过双客户端换维度、重生、断线和重连流程。
 

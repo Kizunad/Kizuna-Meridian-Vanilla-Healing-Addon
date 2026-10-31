@@ -24,21 +24,28 @@ import dev.kizuna.meridian.protocol.pb.MeridianMessages.TimeAdvancePlan;
 import dev.kizuna.meridian.server.BodyCommandHandler;
 import dev.kizuna.meridian.server.BodyHealthHost;
 import dev.kizuna.meridian.server.InMemoryBodyStore;
-import net.fabricmc.fabric.api.gametest.v1.FabricGameTest;
-import net.minecraft.gametest.framework.GameTest;
+import dev.kizuna.meridian.technique.fabric.testing.TestPlayers;
+import net.fabricmc.fabric.api.gametest.v1.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.food.FoodData;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.alchemy.PotionUtils;
+import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
-import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -48,7 +55,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** 真实原版事件、伤害附属与核心账本的整体回归，样例内容不进入发布包。 */
-public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
+public final class HealingGameTest implements BodyHealthHost {
     private static final InMemoryBodyStore STORE = new InMemoryBodyStore(List.of(), List.of());
     private static final Set<String> REJECTED_SUBJECTS = new HashSet<>();
     private static final Set<String> PAUSED_SUBJECTS = new HashSet<>();
@@ -63,12 +70,12 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
                     .setMode(TimeAdvanceMode.ACTIVE).setBiologicalSecondsPerSimulationSecond(1).build(),
             STORE, (caller, receipt, previous, updated) -> { /* 断言读取实际已提交身体。 */ });
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void workerNbtDefersHostAccessUntilEntityEntersWorld(GameTestHelper context) {
         // 下界生成会在工作线程构造炽足兽；构造期初始血量必须完整建立。
         int beforeConstruction = HOST_QUERIES.get();
         var strider = CompletableFuture.supplyAsync(
-                () -> EntityType.STRIDER.create(context.getLevel())).join();
+                () -> EntityTypes.STRIDER.create(context.getLevel(), EntitySpawnReason.CHUNK_GENERATION)).join();
         context.assertTrue(strider != null, "实际构造炽足兽");
         close(context, strider.getHealth(), strider.getMaxHealth(), "工作线程构造保留初始满血");
         context.assertTrue(!((HealingEntityAccess) strider).meridian$internalHealth(), "构造后恢复权威健康拦截");
@@ -79,15 +86,16 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
 
     private static void verifyDeferredGolem(GameTestHelper context) {
         // 带实际临时效果的铁傀儡存档在工作线程读取，余额只在入世后的主线程投影。
-        var original = context.spawn(EntityType.IRON_GOLEM, 1, 2, 1);
+        var original = context.spawn(EntityTypes.IRON_GOLEM, 1, 2, 1);
         bind(original, DAMAGED_PART_HP, DAMAGED_PART_HP);
         original.addEffect(new MobEffectInstance(MobEffects.ABSORPTION, EFFECT_TICKS, 0));
-        CompoundTag saved = new CompoundTag();
-        original.addAdditionalSaveData(saved);
+        CompoundTag saved = save(original);
+        // 存档带原实体 UUID；读入的新实体保留自己的身份，不与仍在世界中的原铁傀儡重复。
+        saved.remove(Entity.TAG_UUID);
         int beforeRead = HOST_QUERIES.get();
         var restored = CompletableFuture.supplyAsync(() -> {
-            var golem = EntityType.IRON_GOLEM.create(context.getLevel());
-            golem.readAdditionalSaveData(saved);
+            var golem = EntityTypes.IRON_GOLEM.create(context.getLevel(), EntitySpawnReason.LOAD);
+            load(golem, saved);
             HealingFabric.refresh(golem);
             if (HealingFabric.inspect(golem).isPresent()) {
                 throw new AssertionError("工作线程不能认领身体");
@@ -108,14 +116,14 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         close(context, hp(restored, 0), DAMAGED_PART_HP, "运行期 setter 不得绕过身体");
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void pausedBodyStopsQueriesAndBlocksVanillaHealing(GameTestHelper context) {
         // 暂停只查询和报告一次，后续 tick、治疗与 setter 都不能回落原版账本。
-        var player = context.makeMockSurvivalPlayer();
+        var player = TestPlayers.detached(context.getLevel(), "healing_paused");
         bind(player, DAMAGED_PART_HP, DAMAGED_PART_HP);
         float displayedHp = player.getHealth();
         long revision = body(player).revision();
-        float exhaustion = player.getFoodData().getExhaustionLevel();
+        double exhaustion = exhaustion(player.getFoodData());
         PAUSED_SUBJECTS.add(player.getStringUUID());
         int beforePause = HOST_QUERIES.get();
         try {
@@ -124,7 +132,7 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
                 HealingFabric.refresh(player);
                 player.heal(1);
                 player.setHealth(player.getMaxHealth());
-                player.tick();
+                player.doTick();
             }
             var access = (HealingEntityAccess) player;
             context.assertTrue(access.meridian$healthPaused(), "暂停状态未保留");
@@ -132,17 +140,17 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
             context.assertTrue(HOST_QUERIES.get() == beforePause + 1, "暂停后仍查询宿主");
             close(context, player.getHealth(), displayedHp, "暂停不能回落原版回血");
             close(context, body(player).revision(), revision, "暂停不能提交身体变化");
-            close(context, player.getFoodData().getExhaustionLevel(), exhaustion, "未回血不收费");
+            close(context, exhaustion(player.getFoodData()), exhaustion, "未回血不收费");
         } finally {
             PAUSED_SUBJECTS.remove(player.getStringUUID());
         }
         context.succeed();
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void healingAndEffectsUseBodyHpWithoutRestoringDestroyedParts(GameTestHelper context) {
         // heal、瞬间治疗和生命恢复都走同一身体治疗入口，过量重新分配。
-        var player = context.makeMockSurvivalPlayer();
+        var player = context.makeMockPlayer(GameType.SURVIVAL);
         bind(player, 99, 50, 0);
         player.heal(11);
         close(context, hp(player, 0), 100, "小缺口封顶");
@@ -151,9 +159,9 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         player.setHealth(player.getMaxHealth());
         close(context, hp(player, 1), 60, "直接 setter 不能绕过身体账本");
         close(context, player.getHealth(), player.getMaxHealth() * 160.0 / 300, "血条只显示身体比例");
-        MobEffects.HEAL.applyInstantenousEffect(null, null, player, 0, 1);
+        MobEffects.INSTANT_HEALTH.value().applyInstantaneousEffect(context.getLevel(), null, null, player, 0, 1);
         close(context, hp(player, 1), 64, "瞬间治疗总量4");
-        MobEffects.REGENERATION.applyEffectTick(player, 0);
+        MobEffects.REGENERATION.value().applyEffectTick(context.getLevel(), player, 0);
         close(context, hp(player, 1), 65, "生命恢复每跳总量1");
         player.addEffect(new MobEffectInstance(MobEffects.HEALTH_BOOST, 100, 1));
         double boost = 0;
@@ -163,62 +171,60 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         close(context, body(player).structure().parts().get(0).maxHp(), 100 + boost, "生命提升依配置即时改变身体上限");
         close(context, hp(player, 1), 65, "扩大上限不赠送HP");
         close(context, player.getMaxHealth(), 20, "生命提升不能制造额外原版红心");
-        CompoundTag boosted = new CompoundTag();
-        player.addAdditionalSaveData(boosted);
-        player.readAdditionalSaveData(boosted);
+        load(player, save(player));
         close(context, body(player).structure().parts().get(0).maxHp(), 100 + boost, "重载不重复增加上限");
         close(context, player.getMaxHealth(), 20, "重载不恢复原版生命提升属性");
         player.removeEffect(MobEffects.HEALTH_BOOST);
         close(context, body(player).structure().parts().get(0).maxHp(), 100, "效果移除即时撤销上限");
 
         // 实际物品消费仍完成，治疗剂量经过同一公开 heal 拦截。
-        ItemStack potion = PotionUtils.setPotion(new ItemStack(Items.POTION), Potions.HEALING);
-        ItemStack remainder = Items.POTION.finishUsingItem(potion, player.level(), player);
+        ItemStack potion = PotionContents.createItemStack(Items.POTION, Potions.HEALING);
+        ItemStack remainder = potion.finishUsingItem(player.level(), player);
         context.assertTrue(remainder.is(Items.GLASS_BOTTLE), "治疗药水正常饮用并留下瓶子");
         close(context, hp(player, 1), 69, "实际药水的4HP进入身体");
         ItemStack apple = new ItemStack(Items.GOLDEN_APPLE);
-        Items.GOLDEN_APPLE.finishUsingItem(apple, player.level(), player);
+        apple.finishUsingItem(player.level(), player);
         context.assertTrue(apple.isEmpty() && player.hasEffect(MobEffects.REGENERATION)
                 && player.hasEffect(MobEffects.ABSORPTION), "金苹果照常食用并授予效果");
 
         // 普通生物也走 heal，未绑定者以及亡灵瞬间治疗伤害保持原版分支。
-        var cow = context.spawn(EntityType.COW, 2, 2, 2);
+        var cow = context.spawn(EntityTypes.COW, 2, 2, 2);
         bind(cow, 40, 40);
         cow.heal(4);
         close(context, hp(cow, 0), 42, "普通生物均分");
         close(context, hp(cow, 1), 42, "普通生物均分");
-        var unbound = context.spawn(EntityType.COW, 3, 2, 3);
+        var unbound = context.spawn(EntityTypes.COW, 3, 2, 3);
         unbound.setHealth(5);
         unbound.heal(2);
         close(context, unbound.getHealth(), 7, "未绑定保留原版");
-        var undead = context.spawn(EntityType.HUSK, 4, 2, 4);
+        var undead = context.spawn(EntityTypes.HUSK, 4, 2, 4);
         undead.setNoAi(true);
         bind(undead, 100);
-        MobEffects.HEAL.applyInstantenousEffect(null, null, undead, 0, 1);
+        MobEffects.INSTANT_HEALTH.value().applyInstantaneousEffect(context.getLevel(), null, null, undead, 0, 1);
         close(context, hp(undead, 0), 94, "亡灵治疗仍作为6伤害交给伤害附属");
         context.succeed();
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void rejectedHostStopsEffectsWithoutCrashingPlayerTickOrVanillaHealing(GameTestHelper context) {
         // 模拟已认领身体在结算时失败，实际执行饥饿、和平回血和效果 mixin。
-        var player = context.makeMockSurvivalPlayer();
+        var player = TestPlayers.detached(context.getLevel(), "healing_reject");
         bind(player, 40, 40);
         float displayedHp = player.getHealth();
         long revision = body(player).revision();
-        float exhaustion = player.getFoodData().getExhaustionLevel();
+        double exhaustion = exhaustion(player.getFoodData());
         REJECTED_SUBJECTS.add(player.getStringUUID());
         try {
             player.heal(4);
             player.setHealth(player.getMaxHealth());
             player.addEffect(new MobEffectInstance(MobEffects.HEALTH_BOOST, 100, 1));
             for (int tick = 0; tick < 21; tick++) {
-                player.tick();
+                player.doTick();
             }
             close(context, player.getHealth(), displayedHp, "失败不能回落到原版回血");
             close(context, player.getMaxHealth(), 20, "失败不能添加原版生命上限");
             close(context, body(player).revision(), revision, "失败不提交身体变化");
-            close(context, player.getFoodData().getExhaustionLevel(), exhaustion, "未回血不收费");
+            close(context, exhaustion(player.getFoodData()), exhaustion, "未回血不收费");
         } finally {
             // 测试失败也释放拒绝夹具，不影响其他真实服务器场景。
             REJECTED_SUBJECTS.remove(player.getStringUUID());
@@ -226,10 +232,10 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         context.succeed();
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void localShieldsPersistAndTotemPreventsBodyDeath(GameTestHelper context) {
         // 黄心先完全吸收一击，不产生身体事务；再次授予后验证局部余额不能互借。
-        var player = context.makeMockSurvivalPlayer();
+        var player = context.makeMockPlayer(GameType.SURVIVAL);
         bind(player, 100, 100);
         player.addEffect(new MobEffectInstance(MobEffects.ABSORPTION, 200, 0));
         double perPart = 2;
@@ -247,19 +253,17 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         player.hurt(player.damageSources().generic(), (float) (perPart + 1));
         close(context, body(player).partStates().stream().mapToDouble(part -> part.hp()).sum(), 199, "局部黄心不跨部位借用");
         close(context, player.getAbsorptionAmount(), perPart, "只扣命中部位黄心");
-        CompoundTag saved = new CompoundTag();
-        player.addAdditionalSaveData(saved);
-        player.readAdditionalSaveData(saved);
+        load(player, save(player));
         HealingFabric.refresh(player);
         close(context, player.getAbsorptionAmount(), perPart, "存档重载不能补满黄心");
-        Items.MILK_BUCKET.finishUsingItem(new ItemStack(Items.MILK_BUCKET), player.level(), player);
+        new ItemStack(Items.MILK_BUCKET).finishUsingItem(player.level(), player);
         close(context, player.getAbsorptionAmount(), 0, "牛奶清空局部黄心");
         player.addEffect(new MobEffectInstance(MobEffects.ABSORPTION, 1, 0));
         player.tick();
         close(context, player.getAbsorptionAmount(), 0, "效果自然到期清除所有局部黄心");
 
         // 图腾先阻止身体清账，再复用原版消费、授予效果和实体状态。
-        var fragile = context.spawn(EntityType.COW, 2, 2, 2);
+        var fragile = context.spawn(EntityTypes.COW, 2, 2, 2);
         bind(fragile, 1);
         fragile.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
         fragile.hurt(fragile.damageSources().generic(), 10);
@@ -273,7 +277,7 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
             context.assertTrue(body(fragile).vitality().dead() && !fragile.isAlive(), "禁用图腾时正常死亡");
             context.assertTrue(!fragile.getOffhandItem().isEmpty(), "禁用时不消耗图腾");
         }
-        var doomed = context.spawn(EntityType.COW, 3, 2, 3);
+        var doomed = context.spawn(EntityTypes.COW, 3, 2, 3);
         bind(doomed, 1);
         doomed.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.TOTEM_OF_UNDYING));
         doomed.hurt(doomed.damageSources().fellOutOfWorld(), 10);
@@ -282,29 +286,27 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         context.succeed();
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void naturalHealingHalvesDoseAndChargesActualRecovery(GameTestHelper context) {
         // 保留原版十tick饱和回血条件，回复0.5而不是1，exhaustion应为3。
-        var player = context.makeMockSurvivalPlayer();
+        var player = TestPlayers.detached(context.getLevel(), "healing_natural");
         bind(player, 99.9, 99.9);
         var hunger = player.getFoodData();
         hunger.setFoodLevel(20);
         hunger.setSaturation(6);
-        CompoundTag initial = new CompoundTag();
-        hunger.addAdditionalSaveData(initial);
+        CompoundTag initial = foodTag(hunger);
         initial.putFloat("foodExhaustionLevel", 0);
         initial.putInt("foodTickTimer", 0);
-        hunger.readAdditionalSaveData(initial);
+        hunger.readAdditionalSaveData(
+                TagValueInput.create(ProblemReporter.DISCARDING, player.registryAccess(), initial));
         for (int tick = 0; tick < 10; tick++) {
             hunger.tick(player);
         }
         close(context, hp(player, 0), 100, "自然回血实际填满0.2HP");
         close(context, hp(player, 1), 100, "自然回血均分");
-        CompoundTag after = new CompoundTag();
-        hunger.addAdditionalSaveData(after);
-        close(context, after.getFloat("foodExhaustionLevel"), 1.2, "饥饿按实际0.2HP计算，不按名义0.5");
+        close(context, exhaustion(hunger), 1.2, "饥饿按实际0.2HP计算，不按名义0.5");
 
-        var slow = context.makeMockSurvivalPlayer();
+        var slow = TestPlayers.detached(context.getLevel(), "healing_slow");
         bind(slow, 80, 80);
         slow.getFoodData().setFoodLevel(20);
         slow.getFoodData().setSaturation(6);
@@ -312,7 +314,7 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
             slow.getFoodData().tick(slow);
         }
         close(context, hp(slow, 0) + hp(slow, 1), 160.5, "自然回血50%倍率");
-        var hungry = context.makeMockSurvivalPlayer();
+        var hungry = TestPlayers.detached(context.getLevel(), "healing_hungry");
         bind(hungry, 80, 80);
         hungry.getFoodData().setFoodLevel(18);
         hungry.getFoodData().setSaturation(0);
@@ -321,9 +323,9 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
         }
         close(context, hp(hungry, 0) + hp(hungry, 1), 160.5, "低饱和80tick路径同样减半");
         var rules = player.level().getGameRules();
-        boolean previous = rules.getBoolean(GameRules.RULE_NATURAL_REGENERATION);
+        boolean previous = rules.get(GameRules.NATURAL_HEALTH_REGENERATION);
         try {
-            rules.getRule(GameRules.RULE_NATURAL_REGENERATION).set(false, player.getServer());
+            rules.set(GameRules.NATURAL_HEALTH_REGENERATION, false, player.level().getServer());
             for (int tick = 0; tick < 100; tick++) {
                 slow.getFoodData().tick(slow);
             }
@@ -333,27 +335,27 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
                 context.assertTrue(hp(slow, 0) + hp(slow, 1) > 160.5, "显式配置可覆盖自然恢复规则");
             }
         } finally {
-            rules.getRule(GameRules.RULE_NATURAL_REGENERATION).set(previous, player.getServer());
+            rules.set(GameRules.NATURAL_HEALTH_REGENERATION, previous, player.level().getServer());
         }
         context.succeed();
     }
 
-    @GameTest(template = FabricGameTest.EMPTY_STRUCTURE)
+    @GameTest
     public void peacefulHealingRespectsDifficultyAndWorldRule(GameTestHelper context) {
         // 全部调用在同一服务器任务内完成，结束前还原世界设置，不影响其他测试。
-        var player = context.makeMockSurvivalPlayer();
+        var player = TestPlayers.detached(context.getLevel(), "healing_peace");
         bind(player, 80, 80);
-        var server = player.getServer();
+        var server = player.level().getServer();
         Difficulty previousDifficulty = server.getWorldData().getDifficulty();
         var rules = player.level().getGameRules();
-        boolean previousRule = rules.getBoolean(GameRules.RULE_NATURAL_REGENERATION);
+        boolean previousRule = rules.get(GameRules.NATURAL_HEALTH_REGENERATION);
         try {
-            rules.getRule(GameRules.RULE_NATURAL_REGENERATION).set(true, server);
+            rules.set(GameRules.NATURAL_HEALTH_REGENERATION, true, server);
             server.setDifficulty(Difficulty.PEACEFUL, true);
             player.tickCount = 20;
             player.aiStep();
             close(context, hp(player, 0) + hp(player, 1), 161, "和平回血总量1均分到身体");
-            rules.getRule(GameRules.RULE_NATURAL_REGENERATION).set(false, server);
+            rules.set(GameRules.NATURAL_HEALTH_REGENERATION, false, server);
             player.aiStep();
             double expected = 161;
             if (!HealingFabric.config().respectNaturalRegeneration()) {
@@ -361,7 +363,7 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
             }
             close(context, hp(player, 0) + hp(player, 1), expected, "和平回血遵守自然恢复配置");
             server.setDifficulty(Difficulty.NORMAL, true);
-            rules.getRule(GameRules.RULE_NATURAL_REGENERATION).set(true, server);
+            rules.set(GameRules.NATURAL_HEALTH_REGENERATION, true, server);
             player.getFoodData().setFoodLevel(10);
             player.aiStep();
             if (!HealingFabric.config().respectPeaceful()) {
@@ -371,7 +373,7 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
             close(context, player.getFoodData().getFoodLevel(), 10, "难度覆盖不顺带开启补食");
         } finally {
             server.setDifficulty(previousDifficulty, true);
-            rules.getRule(GameRules.RULE_NATURAL_REGENERATION).set(previousRule, server);
+            rules.set(GameRules.NATURAL_HEALTH_REGENERATION, previousRule, server);
         }
         context.succeed();
     }
@@ -432,6 +434,30 @@ public final class HealingGameTest implements FabricGameTest, BodyHealthHost {
                 new BodyTemplate.Reference(new DefinitionId("sample:creature"), 1), structure, Realm.WANDERING_QI,
                 states, List.of(), List.of(), List.of(), List.of(), new VitalityState(0, 1000, 0, false),
                 new TimeCursor(new DefinitionId("sample:world"), "epoch", 0), 0));
+    }
+
+    private static CompoundTag save(LivingEntity entity) {
+        // 受保护的存档方法只能经公开入口调用；得到的标签与正式实体存档相同。
+        var output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, entity.registryAccess());
+        entity.saveWithoutId(output);
+        return output.buildResult();
+    }
+
+    private static void load(LivingEntity entity, CompoundTag saved) {
+        // 与区块读取相同走公开 load，再进入实体自身的附加存档读取。
+        entity.load(TagValueInput.create(ProblemReporter.DISCARDING, entity.registryAccess(), saved));
+    }
+
+    private static CompoundTag foodTag(FoodData food) {
+        // 饥饿数据不公开消耗度，按正式存档字段读写。
+        var output = TagValueOutput.createWithoutContext(ProblemReporter.DISCARDING);
+        food.addAdditionalSaveData(output);
+        return output.buildResult();
+    }
+
+    private static double exhaustion(FoodData food) {
+        // 缺字段返回 NaN，使断言失败而不是当作零消耗。
+        return foodTag(food).getFloatOr("foodExhaustionLevel", Float.NaN);
     }
 
     private static BodySnapshot body(LivingEntity entity) {

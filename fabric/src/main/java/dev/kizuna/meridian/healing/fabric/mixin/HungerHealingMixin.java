@@ -1,9 +1,10 @@
 package dev.kizuna.meridian.healing.fabric.mixin;
 
 import dev.kizuna.meridian.healing.fabric.HealingFabric;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.food.FoodData;
-import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.gamerules.GameRule;
+import net.minecraft.world.level.gamerules.GameRules;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -13,24 +14,24 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(FoodData.class)
 public abstract class HungerHealingMixin {
-    @Unique private Player meridian$player;
+    @Unique private ServerPlayer meridian$player;
     @Unique private double meridian$healed;
 
     @Inject(method = "tick", at = @At("HEAD"))
-    private void meridian$startUpdate(Player player, CallbackInfo callback) {
+    private void meridian$startUpdate(ServerPlayer player, CallbackInfo callback) {
         // 仅保存本次调用的玩家，便于同一方法里的规则与饥饿消耗重定向使用。
         meridian$player = player;
         meridian$healed = -1;
     }
 
     @Inject(method = "tick", at = @At("RETURN"))
-    private void meridian$finishUpdate(Player player, CallbackInfo callback) {
+    private void meridian$finishUpdate(ServerPlayer player, CallbackInfo callback) {
         // FoodData 不在事件结束后持有实体引用。
         meridian$player = null;
     }
 
-    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;heal(F)V"))
-    private void meridian$naturalHeal(Player player, float amount) {
+    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;heal(F)V"))
+    private void meridian$naturalHeal(ServerPlayer player, float amount) {
         // 保留原版触发计时和饱食条件，只将每次治疗剂量乘可配置倍率。
         try {
             var binding = HealingFabric.inspect(player);
@@ -56,10 +57,11 @@ public abstract class HungerHealingMixin {
         manager.addExhaustion(vanillaExhaustion);
     }
 
-    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/GameRules;getBoolean(Lnet/minecraft/world/level/GameRules$Key;)Z"))
-    private boolean meridian$naturalRule(GameRules rules, GameRules.Key<GameRules.BooleanValue> key) {
+    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/gamerules/GameRules;"
+            + "get(Lnet/minecraft/world/level/gamerules/GameRule;)Ljava/lang/Object;"))
+    private Object meridian$naturalRule(GameRules rules, GameRule<?> rule) {
         // 未绑定仍尊重原版，配置覆盖只适用于身体实体的自然回血。
-        if (key == GameRules.RULE_NATURAL_REGENERATION) {
+        if (rule == GameRules.NATURAL_HEALTH_REGENERATION) {
             try {
                 if (HealingFabric.inspect(meridian$player).isPresent()) {
                     return HealingFabric.naturalRegeneration(rules);
@@ -70,6 +72,6 @@ public abstract class HungerHealingMixin {
                 return false;
             }
         }
-        return rules.getBoolean(key);
+        return rules.get(rule);
     }
 }

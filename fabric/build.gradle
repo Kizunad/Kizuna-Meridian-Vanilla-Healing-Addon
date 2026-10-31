@@ -1,12 +1,12 @@
-plugins { id 'fabric-loom' }
+plugins { id 'net.fabricmc.fabric-loom' }
 
 repositories { maven { url = 'https://maven.fabricmc.net/' } }
 dependencies {
+    // 26.x 不混淆：直接用官方名编译，没有映射，模组依赖也不经重映射。
     minecraft libs.minecraft
-    mappings loom.officialMojangMappings()
-    modImplementation libs.fabric.loader
-    modImplementation libs.fabric.api
-    modImplementation 'dev.kizuna.meridian.vanilla:fabric'
+    implementation libs.fabric.loader
+    implementation libs.fabric.api
+    implementation 'dev.kizuna.meridian.vanilla:fabric'
     implementation project(':server')
     include project(':server')
     include implementation('local.meridian:server')
@@ -36,6 +36,10 @@ sourceSets {
         compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
         runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
     }
+}
+dependencies {
+    // 饥饿与和平回血只在服务端玩家上执行；假玩家夹具来自功法库的 testFixtures，经 Damage 组合的功法源码解析。
+    gametestImplementation testFixtures('dev.kizuna.meridian.technique:fabric')
 }
 loom {
     mods { meridian_healing_test { sourceSet sourceSets.gametest } }

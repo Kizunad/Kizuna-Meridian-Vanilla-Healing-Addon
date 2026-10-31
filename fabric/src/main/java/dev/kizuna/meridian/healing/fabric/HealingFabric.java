@@ -16,7 +16,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.gamerules.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.ArrayDeque;
@@ -149,7 +149,8 @@ public final class HealingFabric implements ModInitializer {
         access.meridian$internalHealth(true);
         try {
             entity.setHealth(displayedHp);
-            entity.setAbsorptionAmount((float) (access.meridian$effects().totalShield() / config.hpPerVanillaHp()));
+            double shield = access.meridian$effects().totalShield() / config.hpPerVanillaHp();
+            access.meridian$displayAbsorption((float) shield);
         } finally {
             access.meridian$internalHealth(false);
         }
@@ -190,10 +191,11 @@ public final class HealingFabric implements ModInitializer {
         // 用本附属旧增量还原基准；新增容量不送血，撤销时由核心裁剪超额 HP。
         BodySnapshot body = binding.body();
         // 原版 NBT 可以直接载入属性修正；仅移除此效果的修正，保留装备与其他模组来源。
-        MobEffects.HEALTH_BOOST.getAttributeModifiers().forEach((attribute, modifier) -> {
+        // 修正标识与等级无关，按零级模板取出即可覆盖任意等级的残留。
+        MobEffects.HEALTH_BOOST.value().createModifiers(0, (attribute, modifier) -> {
             var instance = entity.getAttribute(attribute);
             if (instance != null) {
-                instance.removeModifier(modifier.getId());
+                instance.removeModifier(modifier.id());
             }
         });
         if (body.getVitality().getDead()) {
@@ -244,7 +246,7 @@ public final class HealingFabric implements ModInitializer {
 
     public static boolean naturalRegeneration(GameRules rules) {
         // 默认尊重世界规则；关闭此配置仅使已绑定实体的回血忽略该游戏规则。
-        return !config.respectNaturalRegeneration() || rules.getBoolean(GameRules.RULE_NATURAL_REGENERATION);
+        return !config.respectNaturalRegeneration() || rules.get(GameRules.NATURAL_HEALTH_REGENERATION);
     }
 
     public static void beginDamage(LivingEntity entity) {
@@ -256,7 +258,7 @@ public final class HealingFabric implements ModInitializer {
 
     public static void endDamage(LivingEntity entity) {
         // 嵌套伤害逐层退出，避免内层覆盖外层的图腾和局部黄心状态。
-        if (!entity.level().isClientSide) {
+        if (!entity.level().isClientSide()) {
             Deque<LivingEntity> entities = DAMAGE_STACK.get();
             if (!entities.isEmpty() && entities.peek() == entity) {
                 entities.pop();
