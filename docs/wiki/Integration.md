@@ -14,8 +14,6 @@ git diff --check
 
 安装 `fabric/build/libs/` 下不带 `dev` 或 `sources` 的重映射 JAR，Meridian 九仓按适用端整套必装并提供 Fabric API。开发运行统一应用 Framework 的 `scripts/full-assembly.gradle`，固定装配同级安装产物。Damage 不嵌套进本包；Framework 服务端库与纯规则依赖由构建嵌入。执行发生在服务器，单机由集成服务器处理。缺健康宿主启动时报错；已装配宿主明确返回实体未绑定时才走原版治疗。
 
-`fabric/build.gradle` 的 `clearNestedJarCache` 在每次 `remapJar` 前删除 `fabric/build/loom-cache/temp/modprocessing`：Loom 只按坐标复用这里的嵌套 JAR，SNAPSHOT 坐标不变时会把旧的嵌套 JAR 打进发布 JAR。
-
 ## 跨附属协议
 
 `meridian_health_host` 提供 Framework `BodyHealthHost.exchange(byte[])`，交换 `HealthHostRequest / HealthHostResponse`。本包以实体 UUID 查询唯一宿主，固定身体 revision 后通过 `handleHealthEffect` 提交 `HealBody` 或 `SetPartHealthLimits`。失败不换宿主、不刷新版本重发、不回落到原版直接回血。
