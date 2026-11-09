@@ -26,6 +26,10 @@ git diff --check
 
 `meridian_damage_integration` 提供 Framework `BodyDamageIntegration`。`prepare` 接收固定命中与最终剂量的 `DamageIntegrationContext`，只读生成 `DamageIntegrationPlan`，可以减少剂量并提供受校验保命下限。Damage 将剩余伤害通过原宿主提交；成功后发送 `DamageIntegrationCommit`，本包才扣除局部黄心并同步血条。完全吸收无需 HP 事务。多个集成方同时认领会拒绝，不隐式决定叠加顺序。
 
+初始化时向 Damage 的 `registerDamageScope` 登记 `beginDamage` / `endDamage`，使指定部位直接伤害
+复用同一局部黄心、图腾上下文。原版 `hurtServer` 的上下文 mixin 保持原路径；嵌套调用按栈退出。
+编译依赖保持 Healing → Damage，Damage 不读取 Healing 的安装 JAR。
+
 成功效果响应携带对应请求的固定 `HealthResult`，`death_prevented` 决定是否调用原版图腾；不能从血条或事后 HP 比例猜测。所有交换均使用 Framework 的 protoc 消息，不接受客户端上传治疗剂量、效果余额或保命事实。
 
 效果余额与本附属授予的上限增量由 `shared/src/main/proto/kizuna/meridian/healing/v1/effects.proto` 定义，保存于实体 `MeridianHealingEffects` NBT 字节数组。读取限制规模、目标重复和数值，不以重新授予来掩盖坏存档。
@@ -39,5 +43,8 @@ git diff --check
 2026-10-21 原仓 Java 17 构建及 2 项整体回归通过；默认与配置变体各 5 项 GameTest 通过。未修复版本在新增构造回归中只有 1/20 HP，其余四项通过；修复版本保留运行期线程与宿主校验。包含本修复的 Windows 完整装配另通过双客户端换维度、重生、断线和重连流程。
 
 `runGametest` 验证默认配置；`runGametestConfigured` 在独立生成目录验证每部位全额黄心、生命提升启用、图腾禁用和规则覆盖。测试宿主与样例构型仅在 GameTest source set，不进入安装 JAR。GameTest 是实际服务器运行验证，不能代替 Windows 手动游玩验收。
+
+可用 `-PgametestRunDir=build/新目录` 与 `-PconfiguredGametestRunDir=build/新配置目录` 分别指定运行目录，
+避免旧装配配置干扰新版本验证；默认目录保持原值，世界清理和配置变体写入均跟随指定目录。
 
 身体 HP、死亡保命与成功回执在框架内部原子提交。实体黄心、图腾物品、副作用和实体 NBT 与身体 Store 目前没有跨系统崩溃事务；成功提交后中断仍可能需要宿主恢复协调，不声称所有副作用恰好一次。保命图腾不是已死亡身体的复活规则。玩家死亡重生由 Human 提交 Framework `ReviveBody`，局部 HP 至少恢复 10%、肌肉疲劳置满并扣寿元；本附属按复活后的权威快照同步红心并恢复普通治疗，类人生物不自动复活。

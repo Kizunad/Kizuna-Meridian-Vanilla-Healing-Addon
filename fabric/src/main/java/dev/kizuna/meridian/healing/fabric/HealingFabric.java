@@ -10,6 +10,7 @@ import dev.kizuna.meridian.protocol.pb.HealthMessages.SetPartHealthLimits;
 import dev.kizuna.meridian.protocol.pb.MeridianMessages.BodyCommand;
 import dev.kizuna.meridian.protocol.pb.MeridianMessages.FailureCode;
 import dev.kizuna.meridian.server.BodyHealthHost;
+import dev.kizuna.meridian.vanilla.fabric.VanillaDamageFabric;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -36,6 +37,19 @@ public final class HealingFabric implements ModInitializer {
         // 与伤害附属共用公开宿主发现，单机与专服使用相同服务端规则。
         config = HealingConfig.load(FabricLoader.getInstance().getConfigDir().resolve("meridian-vanilla-healing.toml"));
         bridge = new HealingBridge(FabricLoader.getInstance().getEntrypoints("meridian_health_host", BodyHealthHost.class));
+        VanillaDamageFabric.registerDamageScope(new VanillaDamageFabric.DamageScope() {
+            @Override
+            public void enter(LivingEntity entity) {
+                // 直接伤害复用原版 hurtServer 的局部黄心和图腾上下文。
+                beginDamage(entity);
+            }
+
+            @Override
+            public void exit(LivingEntity entity) {
+                // 无论伤害提交成功与否，退出当前层级的实体上下文。
+                endDamage(entity);
+            }
+        });
         ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
             // 等其他宿主完成入世认领，再由实体首次 tick 执行同步。
             if (entity instanceof LivingEntity living) {

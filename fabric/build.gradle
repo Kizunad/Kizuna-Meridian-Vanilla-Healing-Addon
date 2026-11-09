@@ -41,6 +41,9 @@ dependencies {
     // 饥饿与和平回血只在服务端玩家上执行；假玩家夹具来自功法库的 testFixtures，经 Damage 组合的功法源码解析。
     gametestImplementation testFixtures('dev.kizuna.meridian.technique:fabric')
 }
+def gametestDirectory = providers.gradleProperty('gametestRunDir').getOrElse('build/gametest')
+def configuredGametestDirectory = providers.gradleProperty('configuredGametestRunDir')
+        .getOrElse('build/gametest-configured')
 loom {
     mods { meridian_healing_test { sourceSet sourceSets.gametest } }
     runs {
@@ -48,7 +51,7 @@ loom {
             server()
             name 'Healing GameTest'
             source sourceSets.gametest
-            runDir 'build/gametest'
+            runDir gametestDirectory
             vmArg '-Dfabric-api.gametest'
             vmArg '-Dfabric-api.gametest.report-file=build/gametest-results.xml'
         }
@@ -56,7 +59,7 @@ loom {
             server()
             name 'Healing Configured GameTest'
             source sourceSets.gametest
-            runDir 'build/gametest-configured'
+            runDir configuredGametestDirectory
             vmArg '-Dfabric-api.gametest'
             vmArg '-Dfabric-api.gametest.report-file=build/gametest-configured-results.xml'
         }
@@ -67,7 +70,7 @@ tasks.named('runGametest') {
     doFirst {
         // 每局从空目录新建世界：GameTest 服务端按自带的平坦预设建世界，旧目录只会累积上一局的区块、实体、假玩家与模组存档。
         // 26.2 把生成设置与游戏规则拆到了 data/minecraft，只留 level.dat 会退回随机种子的默认地形，所以整个目录删掉。
-        file('build/gametest/world').deleteDir()
+        file("${gametestDirectory}/world").deleteDir()
     }
 }
 
@@ -75,8 +78,8 @@ tasks.named('runGametest') {
 tasks.named('runGametestConfigured') {
     doFirst {
         // 与默认配置的 GameTest 一样每局新建世界。
-        file('build/gametest-configured/world').deleteDir()
-        def configuration = file('build/gametest-configured/config/meridian-vanilla-healing.toml')
+        file("${configuredGametestDirectory}/world").deleteDir()
+        def configuration = file("${configuredGametestDirectory}/config/meridian-vanilla-healing.toml")
         configuration.parentFile.mkdirs()
         configuration.text = '''absorption_distribution = "per_part"
 health_boost_changes_part_limits = true
