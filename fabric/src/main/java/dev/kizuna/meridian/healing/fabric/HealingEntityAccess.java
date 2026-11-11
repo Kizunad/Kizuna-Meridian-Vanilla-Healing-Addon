@@ -16,4 +16,10 @@ public interface HealingEntityAccess {
     void meridian$pauseHealth();
     boolean meridian$failureReported();
     void meridian$markFailureReported();
+    /** 最近一次宿主查询是否成功给出了归属；从未查询或上次查询失败时为 false。 */
+    boolean meridian$bindingKnown();
+    /** 最近一次成功查询时实体是否已绑定身体；只在 bindingKnown 为 true 时有意义。 */
+    boolean meridian$lastBound();
+    void meridian$rememberBinding(boolean bound);
+    void meridian$forgetBinding();
 }

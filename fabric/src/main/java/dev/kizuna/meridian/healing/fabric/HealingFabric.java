@@ -68,10 +68,31 @@ public final class HealingFabric implements ModInitializer {
         if (!canSynchronize(entity)) {
             return Optional.empty();
         }
-        if (((HealingEntityAccess) entity).meridian$healthPaused()) {
+        var access = (HealingEntityAccess) entity;
+        if (access.meridian$healthPaused()) {
             throw new HealingErrors.HostRejected(FailureCode.BODY_PAUSED);
         }
-        return bridge.inspect(entity.getStringUUID());
+        // 记下这次查询的归属，供每 tick 的自然回血规则复用；查询抛错时记忆保持清空。
+        access.meridian$forgetBinding();
+        Optional<HealingBridge.Binding> binding = bridge.inspect(entity.getStringUUID());
+        access.meridian$rememberBinding(binding.isPresent());
+        return binding;
+    }
+
+    public static boolean boundForRule(LivingEntity entity) {
+        // 原版饥饿每 tick 都读自然回血规则；宿主查询会结清身体并写一条回执，不能每 tick 做。
+        // 归属沿用最近一次查询：每秒刷新、每次治疗和伤害都会重新查询并覆盖它，只有不知道时才查。
+        if (!canSynchronize(entity)) {
+            return false;
+        }
+        var access = (HealingEntityAccess) entity;
+        if (access.meridian$healthPaused()) {
+            throw new HealingErrors.HostRejected(FailureCode.BODY_PAUSED);
+        }
+        if (access.meridian$bindingKnown()) {
+            return access.meridian$lastBound();
+        }
+        return inspect(entity).isPresent();
     }
 
     private static boolean canSynchronize(LivingEntity entity) {

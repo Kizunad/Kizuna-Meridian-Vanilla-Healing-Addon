@@ -61,9 +61,10 @@ public abstract class HungerHealingMixin {
             + "get(Lnet/minecraft/world/level/gamerules/GameRule;)Ljava/lang/Object;"))
     private Object meridian$naturalRule(GameRules rules, GameRule<?> rule) {
         // 未绑定仍尊重原版，配置覆盖只适用于身体实体的自然回血。
+        // 这里每 tick 都会进来，归属用实体上记住的结论，真正回血时 naturalHeal 会再查一次宿主。
         if (rule == GameRules.NATURAL_HEALTH_REGENERATION) {
             try {
-                if (HealingFabric.inspect(meridian$player).isPresent()) {
+                if (HealingFabric.boundForRule(meridian$player)) {
                     return HealingFabric.naturalRegeneration(rules);
                 }
             } catch (RuntimeException failure) {

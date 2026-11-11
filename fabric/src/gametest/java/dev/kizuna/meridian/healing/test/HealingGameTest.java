@@ -320,9 +320,14 @@ public final class HealingGameTest implements BodyHealthHost {
         bind(hungry, 80, 80);
         hungry.getFoodData().setFoodLevel(18);
         hungry.getFoodData().setSaturation(0);
-        for (int tick = 0; tick < 80; tick++) {
+        // 前 79 tick 只累计计时、不回血，规则判断沿用已知归属，不能每 tick 查询宿主（每次查询都会结清身体）。
+        int beforeWaiting = HOST_QUERIES.get();
+        for (int tick = 0; tick < 79; tick++) {
             hungry.getFoodData().tick(hungry);
         }
+        context.assertTrue(HOST_QUERIES.get() == beforeWaiting,
+                "等待回血的 tick 查询了宿主 " + (HOST_QUERIES.get() - beforeWaiting) + " 次");
+        hungry.getFoodData().tick(hungry);
         close(context, hp(hungry, 0) + hp(hungry, 1), 160.5, "低饱和80tick路径同样减半");
         var rules = player.level().getGameRules();
         boolean previous = rules.get(GameRules.NATURAL_HEALTH_REGENERATION);

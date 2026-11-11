@@ -33,6 +33,8 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     @Unique private boolean meridian$refreshPending = true;
     @Unique private boolean meridian$healthPaused;
     @Unique private boolean meridian$failureReported;
+    @Unique private boolean meridian$bindingKnown;
+    @Unique private boolean meridian$lastBound;
 
     @Override
     public boolean meridian$refreshPending() {
@@ -74,6 +76,31 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     public void meridian$markFailureReported() {
         // 错误记录归实体所有，不在全局表中保留已卸载实体。
         meridian$failureReported = true;
+    }
+
+    @Override
+    public boolean meridian$bindingKnown() {
+        // 归属记忆跟随实体实例；重生或重新登录得到新实体，会重新查询一次。
+        return meridian$bindingKnown;
+    }
+
+    @Override
+    public boolean meridian$lastBound() {
+        // 只是上次查询的结论，治疗和伤害仍以当次查询为准。
+        return meridian$lastBound;
+    }
+
+    @Override
+    public void meridian$rememberBinding(boolean bound) {
+        // 每次宿主查询成功都覆盖记忆，每秒刷新会让它保持新鲜。
+        meridian$bindingKnown = true;
+        meridian$lastBound = bound;
+    }
+
+    @Override
+    public void meridian$forgetBinding() {
+        // 查询失败后不能沿用旧结论，下一次判断须重新问宿主。
+        meridian$bindingKnown = false;
     }
 
     @Override
