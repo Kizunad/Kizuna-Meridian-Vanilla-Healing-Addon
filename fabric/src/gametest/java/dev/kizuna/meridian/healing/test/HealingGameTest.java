@@ -35,6 +35,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.food.FoodData;
@@ -47,7 +48,9 @@ import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.storage.TagValueInput;
 import net.minecraft.world.level.storage.TagValueOutput;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.HashSet;
 import java.util.Set;
@@ -62,6 +65,9 @@ public final class HealingGameTest implements BodyHealthHost {
     private static final Set<String> REJECTED_SUBJECTS = new HashSet<>();
     private static final Set<String> PAUSED_SUBJECTS = new HashSet<>();
     private static final AtomicInteger HOST_QUERIES = new AtomicInteger();
+    private static final Map<String, Integer> SUBJECT_QUERIES = new HashMap<>();
+    private static final int PROBE_WATCH_TICKS = 61;
+    private static final int PROBE_WATCH_SECONDS = 3;
     private static final int PAUSED_TICKS = 41;
     private static final int EFFECT_TICKS = 100;
     private static final double DAMAGED_PART_HP = 40;
@@ -385,11 +391,42 @@ public final class HealingGameTest implements BodyHealthHost {
         context.succeed();
     }
 
+    @GameTest(maxTicks = DEFAULT_TIMEOUT)
+    public void unboundMobIsProbedRarelyWhileBoundMobRefreshesEverySecond(GameTestHelper context) {
+        // 没有身体的生物 10 秒才重新探测一次归属；有身体的照旧每秒刷新，血条行为不变。
+        var unbound = context.spawn(EntityTypes.COW, new BlockPos(1, 1, 1));
+        var bound = context.spawn(EntityTypes.PIG, new BlockPos(3, 1, 1));
+        unbound.setNoAi(true /* noAi */);
+        bound.setNoAi(true /* noAi */);
+        bind(bound, 80, 80);
+        context.runAfterDelay(1, () -> {
+            int unboundBefore = queries(unbound);
+            int boundBefore = queries(bound);
+            context.assertTrue(unboundBefore > 0, "未绑定生物入世后没有探测过归属");
+            context.runAfterDelay(PROBE_WATCH_TICKS, () -> {
+                int unboundProbes = queries(unbound) - unboundBefore;
+                int boundRefreshes = queries(bound) - boundBefore;
+                unbound.discard();
+                bound.discard();
+                context.assertTrue(unboundProbes <= 1, "未绑定生物 3 秒内探测了 " + unboundProbes + " 次");
+                context.assertTrue(boundRefreshes >= PROBE_WATCH_SECONDS,
+                        "已绑定生物 3 秒内只刷新了 " + boundRefreshes + " 次");
+                context.succeed();
+            });
+        });
+    }
+
+    private static int queries(LivingEntity entity) {
+        // 本测试宿主收到的、针对这个实体的请求数。
+        return SUBJECT_QUERIES.getOrDefault(entity.getStringUUID(), 0);
+    }
+
     @Override
     public byte[] exchange(byte[] payload) {
         // 仅认领测试中登记的实体，实际操作经过正式命令处理器和事务存储。
         var request = HealthHostProtobuf.decodeRequest(payload);
         HOST_QUERIES.incrementAndGet();
+        SUBJECT_QUERIES.merge(request.getSubjectId(), 1, Integer::sum);
         var response = HealthHostResponse.newBuilder()
                 .setProtocolVersion(1)
                 .setRequestId(request.getRequestId());

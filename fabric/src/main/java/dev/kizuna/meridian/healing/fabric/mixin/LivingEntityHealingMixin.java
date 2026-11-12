@@ -10,6 +10,7 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,6 +27,8 @@ import java.util.Collection;
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     @Unique private static final int MERIDIAN_SYNC_TICKS = 20;
+    /** 上次查询是未绑定的非玩家实体，隔这么多 tick 才重新问一次宿主。 */
+    @Unique private static final int MERIDIAN_UNBOUND_PROBE_TICKS = 200;
     @Unique private static final String MERIDIAN_EFFECTS_KEY = "MeridianHealingEffects";
     @Unique private TemporaryHealthState meridian$effects = new TemporaryHealthState();
     @Unique private boolean meridian$internalHealth;
@@ -92,7 +95,7 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
 
     @Override
     public void meridian$rememberBinding(boolean bound) {
-        // 每次宿主查询成功都覆盖记忆，每秒刷新会让它保持新鲜。
+        // 每次宿主查询成功都覆盖记忆；已绑定的实体和玩家靠每秒刷新保持新鲜，未绑定的生物 10 秒一次。
         meridian$bindingKnown = true;
         meridian$lastBound = bound;
     }
@@ -168,9 +171,20 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     private void meridian$syncHealth(CallbackInfo callback) {
         // 展示每秒对齐一次，治疗、伤害和效果变更另有即时更新入口。
         LivingEntity entity = (LivingEntity) (Object) this;
-        if (meridian$refreshPending || entity.tickCount % MERIDIAN_SYNC_TICKS == 0) {
+        if (meridian$refreshPending || entity.tickCount % meridian$syncInterval(entity) == 0) {
             HealingFabric.refresh(entity);
         }
+    }
+
+    @Unique
+    private int meridian$syncInterval(LivingEntity entity) {
+        // 没有身体的生物（牛、僵尸）占绝大多数，不必每秒向所有宿主探测一遍，10 秒问一次。
+        // 只在「上次查询成功且结论是未绑定」时放慢；查询失败会清掉记忆，治疗和伤害的当次查询会覆盖它，
+        // 一旦哪次查到已绑定就回到每秒。玩家的自然回血规则每 tick 读这份记忆，所以玩家始终每秒刷新。
+        if (meridian$bindingKnown && !meridian$lastBound && !(entity instanceof Player)) {
+            return MERIDIAN_UNBOUND_PROBE_TICKS;
+        }
+        return MERIDIAN_SYNC_TICKS;
     }
 
     @Inject(method = "onEffectAdded", at = @At("TAIL"))
