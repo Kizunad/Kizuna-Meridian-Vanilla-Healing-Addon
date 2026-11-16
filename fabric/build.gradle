@@ -40,6 +40,8 @@ sourceSets {
 dependencies {
     // 饥饿与和平回血只在服务端玩家上执行；假玩家夹具来自功法库的 testFixtures，经 Damage 组合的功法源码解析。
     gametestImplementation testFixtures('dev.kizuna.meridian.technique:fabric')
+    // 伤势用例走伤害附属的指定部位入口，它的返回类型在伤害附属的 server 模块里。
+    gametestImplementation 'dev.kizuna.meridian.vanilla:server'
 }
 def gametestDirectory = providers.gradleProperty('gametestRunDir').getOrElse('build/gametest')
 def configuredGametestDirectory = providers.gradleProperty('configuredGametestRunDir')

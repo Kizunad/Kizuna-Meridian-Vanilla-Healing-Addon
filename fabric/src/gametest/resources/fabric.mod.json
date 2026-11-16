@@ -5,7 +5,10 @@
   "name": "Meridian Healing Integration Test",
   "environment": "*",
   "entrypoints": {
-    "fabric-gametest": ["dev.kizuna.meridian.healing.test.HealingGameTest"],
+    "fabric-gametest": [
+      "dev.kizuna.meridian.healing.test.HealingGameTest",
+      "dev.kizuna.meridian.healing.test.InjuryGameTest"
+    ],
     "meridian_health_host": ["dev.kizuna.meridian.healing.test.HealingGameTest"]
   }
 }

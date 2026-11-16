@@ -48,3 +48,5 @@
 | `respect_natural_regeneration` | `true` | 是否遵守世界自然恢复规则 |
 
 未知键、非法类型、非有限值或越界值会拒绝启动，避免静默采用错误规则。
+
+`[injury]` 一节（部位受伤挂状态效果）见 [伤势](Injuries.md)。

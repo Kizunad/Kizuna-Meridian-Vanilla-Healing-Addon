@@ -1,0 +1,47 @@
+plugins { id 'net.fabricmc.fabric-loom' }
+
+description = '伤势的真实客户端连拍，合成录像给人看。一次只录一段，-PclienttestClip 选：leg（腿伤变慢）、hand（手归零兵器掉地）、vital（颈、胸归零当场死）。'
+
+repositories { maven { url = 'https://maven.fabricmc.net/' } }
+
+dependencies {
+    // 26.x 不混淆：直接用官方名编译，模组依赖也不经重映射。
+    minecraft libs.minecraft
+    implementation libs.fabric.loader
+    implementation libs.fabric.api
+    // 正式数据包按安装 JAR 装入，和 GameTest 一样用发行包自己的资源。
+    localRuntime files(rootProject.project(':fabric').tasks.named('jar'))
+    // 连拍里的伤害走伤害附属的指定部位入口；运行时由完整装配装入一次。
+    compileOnly('dev.kizuna.meridian.vanilla:fabric') { transitive = false }
+    compileOnly 'dev.kizuna.meridian.vanilla:server'
+}
+
+apply from: new File(kizunaWorkspace.directory('framework'), 'scripts/full-assembly.gradle')
+
+loom {
+    mods {
+        meridian_healing_clienttest { sourceSet sourceSets.main }
+    }
+    runs {
+        clientGametest {
+            client()
+            name '伤势客户端连拍'
+            runDir providers.gradleProperty('clienttestRunDir').getOrElse('build/clienttest')
+            vmArg '-Dfabric.client.gametest'
+            vmArg '-Dfabric.client.gametest.modid=meridian_healing_clienttest'
+            vmArg "-Dmeridian.healing.clip=${providers.gradleProperty('clienttestClip').getOrElse('leg')}"
+            programArgs '--width', '1280', '--height', '720'
+            programArgs '--username', 'Player992'
+        }
+    }
+}
+
+tasks.named('runClientGametest') {
+    doFirst {
+        // 跳过首启无障碍引导，界面用中文。
+        def runDirectory = file(providers.gradleProperty('clienttestRunDir').getOrElse('build/clienttest'))
+        runDirectory.mkdirs()
+        // 视野 40 度（选项里存的是 (度数 − 70) / 40）：镜头离得远，人物在画面里才够大。
+        new File(runDirectory, 'options.txt').text = 'onboardAccessibility:false\nlang:zh_cn\nfov:-0.75\n'
+    }
+}

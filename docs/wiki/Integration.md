@@ -45,6 +45,10 @@ git diff --check
 
 2026-10-21 原仓 Java 17 构建及 2 项整体回归通过；默认与配置变体各 5 项 GameTest 通过。未修复版本在新增构造回归中只有 1/20 HP，其余四项通过；修复版本保留运行期线程与宿主校验。包含本修复的 Windows 完整装配另通过双客户端换维度、重生、断线和重连流程。
 
+伤势：`InjuryRulesTest` 六条单测盯判档、各组后果和配置；`InjuryGameTest` 六条用真的人体（类人附属给卫道士绑的）
+和伤害附属的指定部位入口，盯腿伤减速和治好以后撤、手归零掉东西、头挨打反胃和头晕的摄入修正、牛奶解不了、气短掉氧气快、玩家的饥饿和疾跑。
+`clienttest` 模块是给人看的真客户端连拍，一次录一段（`-PclienttestClip=leg|hand|vital`）。
+
 `runGametest` 验证默认配置；`runGametestConfigured` 在独立生成目录验证每部位全额黄心、生命提升启用、图腾禁用和规则覆盖。测试宿主与样例构型仅在 GameTest source set，不进入安装 JAR。GameTest 是实际服务器运行验证，不能代替 Windows 手动游玩验收。
 
 可用 `-PgametestRunDir=build/新目录` 与 `-PconfiguredGametestRunDir=build/新配置目录` 分别指定运行目录，

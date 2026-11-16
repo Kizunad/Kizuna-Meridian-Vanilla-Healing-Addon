@@ -1,0 +1,12 @@
+{
+  "values": [
+    "meridian_vanilla_healing:leg_injury",
+    "meridian_vanilla_healing:hip_injury",
+    "meridian_vanilla_healing:arm_injury",
+    "meridian_vanilla_healing:crippled_hand",
+    "meridian_vanilla_healing:abdomen_injury",
+    "meridian_vanilla_healing:short_breath",
+    "meridian_vanilla_healing:neck_injury",
+    "meridian_vanilla_healing:dizziness"
+  ]
+}

@@ -9,6 +9,7 @@ import dev.kizuna.meridian.protocol.pb.HealthMessages.PartHealthLimit;
 import dev.kizuna.meridian.protocol.pb.HealthMessages.SetPartHealthLimits;
 import dev.kizuna.meridian.protocol.pb.MeridianMessages.BodyCommand;
 import dev.kizuna.meridian.protocol.pb.MeridianMessages.FailureCode;
+import dev.kizuna.meridian.server.BodyActivityHost;
 import dev.kizuna.meridian.server.BodyHealthHost;
 import dev.kizuna.meridian.vanilla.fabric.VanillaDamageFabric;
 import net.fabricmc.api.ModInitializer;
@@ -36,7 +37,10 @@ public final class HealingFabric implements ModInitializer {
     public void onInitialize() {
         // 与伤害附属共用公开宿主发现，单机与专服使用相同服务端规则。
         config = HealingConfig.load(FabricLoader.getInstance().getConfigDir().resolve("meridian-vanilla-healing.toml"));
-        bridge = new HealingBridge(FabricLoader.getInstance().getEntrypoints("meridian_health_host", BodyHealthHost.class));
+        bridge = new HealingBridge(
+                FabricLoader.getInstance().getEntrypoints("meridian_health_host", BodyHealthHost.class),
+                FabricLoader.getInstance().getEntrypoints("meridian_activity_host", BodyActivityHost.class));
+        InjuryEffects.register();
         VanillaDamageFabric.registerDamageScope(new VanillaDamageFabric.DamageScope() {
             @Override
             public void enter(LivingEntity entity) {
@@ -56,6 +60,11 @@ public final class HealingFabric implements ModInitializer {
                 ((HealingEntityAccess) living).meridian$markRefreshPending();
             }
         });
+    }
+
+    static HealingBridge bridge() {
+        // 伤势的真元修正要经同一个宿主桥提交。
+        return bridge;
     }
 
     public static HealingConfig config() {
@@ -172,6 +181,7 @@ public final class HealingFabric implements ModInitializer {
         }
         var access = (HealingEntityAccess) entity;
         access.meridian$effects().bind(body);
+        InjuryFabric.observe(entity, body);
         double maximum = HealingRules.partMaximum(body);
         double ratio = 0;
         if (!body.getVitality().getDead() && maximum > 0) {

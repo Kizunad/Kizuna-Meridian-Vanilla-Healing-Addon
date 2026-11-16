@@ -49,6 +49,7 @@ import net.minecraft.world.level.storage.TagValueInput;
 import net.minecraft.world.level.storage.TagValueOutput;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -466,12 +467,29 @@ public final class HealingGameTest implements BodyHealthHost {
 
     private static void registerBody(LivingEntity entity, double... hp) {
         // 任意部位数的非人体构型，保护框架独立性及宿主协议边界。
+        Map<String, Double> named = new LinkedHashMap<>();
+        for (int index = 0; index < hp.length; index++) {
+            named.put("section_" + index, hp[index]);
+        }
+        registerBody(entity, named);
+    }
+
+    /** 给实体登记一具按名字取部位的样例身体（每个部位上限 100）并同步一次；伤势用例拿它搭指定部位的伤。 */
+    static void bindNamed(LivingEntity entity, Map<String, Double> hp) {
+        registerBody(entity, hp);
+        if (entity.level().getEntity(entity.getId()) != entity) {
+            entity.level().addFreshEntity(entity);
+        }
+        HealingFabric.refresh(entity);
+    }
+
+    private static void registerBody(LivingEntity entity, Map<String, Double> hp) {
         var parts = new ArrayList<Anatomy.PartDefinition>();
         var states = new ArrayList<AnatomyState.Part>();
-        for (int index = 0; index < hp.length; index++) {
-            var id = new Anatomy.PartId("section_" + index);
+        for (var entry : hp.entrySet()) {
+            var id = new Anatomy.PartId(entry.getKey());
             parts.add(new Anatomy.PartDefinition(id, "样例", 100));
-            states.add(new AnatomyState.Part(id, hp[index]));
+            states.add(new AnatomyState.Part(id, entry.getValue()));
         }
         var structure = new BodyStructure(parts, List.of(), List.of(), List.of(), List.of());
         STORE.registerBody(new BodySnapshot(BodySnapshot.CURRENT_SCHEMA_VERSION, new BodyId(entity.getStringUUID()),
@@ -499,7 +517,7 @@ public final class HealingGameTest implements BodyHealthHost {
         return output.buildResult();
     }
 
-    private static double exhaustion(FoodData food) {
+    static double exhaustion(FoodData food) {
         // 缺字段返回 NaN，使断言失败而不是当作零消耗。
         return foodTag(food).getFloatOr("foodExhaustionLevel", Float.NaN);
     }

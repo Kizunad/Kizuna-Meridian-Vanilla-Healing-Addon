@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "meridian_healing_clienttest",
+  "version": "1.0.0",
+  "name": "伤势客户端连拍",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["dev.kizuna.meridian.healing.clienttest.InjuryClientTest"]
+  },
+  "depends": {
+    "fabric-api": "*", "meridian_vanilla_healing": "*", "meridian_vanilla_damage": "*", "meridian_humanoid_host": "*"
+  }
+}

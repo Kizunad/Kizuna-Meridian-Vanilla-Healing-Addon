@@ -10,7 +10,7 @@ pluginManagement {
 apply from: new File(rootDir.parentFile, 'Kizuna-Meridian-Mod-Framework/scripts/workspace.gradle')
 
 rootProject.name = 'kizuna-meridian-vanilla-healing-addon'
-include 'server', 'fabric'
+include 'server', 'fabric', 'clienttest'
 
 // 本地源码替换键不是已发布的 Maven 坐标。本构建直接组合框架时以这里的规则为准，
 // Damage 传递的功法 shared 编译期导入框架客户端协议，所以 client 也要替换。

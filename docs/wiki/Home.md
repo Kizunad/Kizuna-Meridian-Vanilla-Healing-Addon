@@ -5,6 +5,7 @@
 身体归 Framework 唯一账本，生物死亡条件归生物 Addon。本包不创建人体、不复制人体定义。原版伤害由独立 Vanilla Damage Addon 接入，两者通过公开 Protobuf 交换局部黄心与本次保命方案。
 
 - [治疗、黄心与配置](Healing-Rules.md)
+- [伤势：部位受伤挂状态效果](Injuries.md)
 - [构建、协议与验证](Integration.md)
 
 当前为源码实现，尚未发布 Maven 包或正式发行版本。

@@ -1,0 +1,18 @@
+{
+  "effect.meridian_vanilla_healing.leg_injury": "腿伤",
+  "effect.meridian_vanilla_healing.leg_injury.note": "腿上带伤，步子迈不开；伤到撑不住身子时，跑不起来，也跳不高。",
+  "effect.meridian_vanilla_healing.hip_injury": "胯伤",
+  "effect.meridian_vanilla_healing.hip_injury.note": "胯骨受创，一走就牵着疼，步子慢了；伤重时再也跑不起来。",
+  "effect.meridian_vanilla_healing.arm_injury": "臂伤",
+  "effect.meridian_vanilla_healing.arm_injury.note": "手臂带伤，使不上劲：惯用的那条伤了，出手轻，挖凿也慢。",
+  "effect.meridian_vanilla_healing.crippled_hand": "手废",
+  "effect.meridian_vanilla_healing.crippled_hand.note": "手废了，握不住东西，拿什么掉什么。",
+  "effect.meridian_vanilla_healing.abdomen_injury": "腹伤",
+  "effect.meridian_vanilla_healing.abdomen_injury.note": "腹中带伤，吃下去的不顶饿，饿得比平时快。",
+  "effect.meridian_vanilla_healing.short_breath": "气短",
+  "effect.meridian_vanilla_healing.short_breath.note": "胸口发闷，喘不上气：跑起来格外费力，憋气也憋不久。",
+  "effect.meridian_vanilla_healing.neck_injury": "颈伤",
+  "effect.meridian_vanilla_healing.neck_injury.note": "颈上带伤，一使劲就牵着疼，两手出力都打了折扣。",
+  "effect.meridian_vanilla_healing.dizziness": "头晕",
+  "effect.meridian_vanilla_healing.dizziness.note": "头上挨了重的，昏沉发晕，吐纳时纳进来的真元少了。"
+}

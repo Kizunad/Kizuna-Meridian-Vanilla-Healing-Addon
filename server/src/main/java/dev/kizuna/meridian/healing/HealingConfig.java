@@ -1,6 +1,8 @@
 package dev.kizuna.meridian.healing;
 
+import dev.kizuna.meridian.healing.injury.InjuryConfig;
 import org.tomlj.Toml;
+import org.tomlj.TomlTable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -8,10 +10,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 
-/** 单位换算、分配策略及原版行为开关，不包含人体部位名称。 */
+/** 单位换算、分配策略、原版行为开关和伤势配置；部位名称只出现在配置文件里，代码不认识人体。 */
 public record HealingConfig(double hpPerVanillaHp, boolean sharedAbsorption, double naturalMultiplier,
                             boolean healthBoostChangesLimits, boolean totemEnabled, double totemMinimumRatio,
-                            boolean respectPeaceful, boolean respectNaturalRegeneration) {
+                            boolean respectPeaceful, boolean respectNaturalRegeneration, InjuryConfig injury) {
+    private static final String RESOURCE = "/meridian-vanilla-healing.toml";
+    private static final String INJURY = "injury";
+
     public HealingConfig {
         // 极端值必须在载入时拒绝，不能等进入实体事件后才部分消耗资源。
         if (!Double.isFinite(hpPerVanillaHp) || hpPerVanillaHp <= 0
@@ -26,7 +31,7 @@ public record HealingConfig(double hpPerVanillaHp, boolean sharedAbsorption, dou
         try {
             if (!Files.exists(path)) {
                 Files.createDirectories(path.getParent());
-                try (InputStream source = HealingConfig.class.getResourceAsStream("/meridian-vanilla-healing.toml")) {
+                try (InputStream source = HealingConfig.class.getResourceAsStream(RESOURCE)) {
                     Files.copy(source, path);
                 }
             }
@@ -41,7 +46,7 @@ public record HealingConfig(double hpPerVanillaHp, boolean sharedAbsorption, dou
         var table = Toml.parse(text);
         Set<String> allowed = Set.of("hp_per_vanilla_hp", "absorption_distribution", "natural_healing_multiplier",
                 "health_boost_changes_part_limits", "totem_enabled", "totem_minimum_hp_ratio",
-                "respect_peaceful_difficulty", "respect_natural_regeneration");
+                "respect_peaceful_difficulty", "respect_natural_regeneration", INJURY);
         try {
             if (table.hasErrors() || !allowed.containsAll(table.keySet())) {
                 throw HealingErrors.invalid(HealingErrors.CONFIG);
@@ -55,9 +60,30 @@ public record HealingConfig(double hpPerVanillaHp, boolean sharedAbsorption, dou
                     table.getBoolean("health_boost_changes_part_limits", () -> false),
                     table.getBoolean("totem_enabled", () -> true), table.getDouble("totem_minimum_hp_ratio", () -> 0.25),
                     table.getBoolean("respect_peaceful_difficulty", () -> true),
-                    table.getBoolean("respect_natural_regeneration", () -> true));
+                    table.getBoolean("respect_natural_regeneration", () -> true),
+                    InjuryConfig.parse(injuryTable(table.get(INJURY)), bundledInjury()));
         } catch (RuntimeException failure) {
             throw new IllegalArgumentException(HealingErrors.CONFIG, failure);
+        }
+    }
+
+    private static TomlTable injuryTable(Object value) {
+        // 整节没写是允许的（老配置文件）；写了但不是表，拒绝。
+        if (value == null) {
+            return null;
+        }
+        if (!(value instanceof TomlTable table)) {
+            throw HealingErrors.invalid(HealingErrors.CONFIG);
+        }
+        return table;
+    }
+
+    private static TomlTable bundledInjury() {
+        // 随包配置里的 [injury]：老配置文件缺这一节、或者缺后来加的键时拿它补。
+        try (InputStream source = HealingConfig.class.getResourceAsStream(RESOURCE)) {
+            return Toml.parse(new String(source.readAllBytes(), StandardCharsets.UTF_8)).getTable(INJURY);
+        } catch (IOException failure) {
+            throw new IllegalStateException(HealingErrors.CONFIG, failure);
         }
     }
 }

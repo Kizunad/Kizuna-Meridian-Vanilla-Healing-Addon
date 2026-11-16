@@ -1,0 +1,18 @@
+{
+  "effect.meridian_vanilla_healing.leg_injury": "Leg Injury",
+  "effect.meridian_vanilla_healing.leg_injury.note": "A wounded leg slows every step; when it can no longer bear weight there is no running and little jumping.",
+  "effect.meridian_vanilla_healing.hip_injury": "Hip Injury",
+  "effect.meridian_vanilla_healing.hip_injury.note": "A cracked hip drags at every stride; at its worst, running is out of the question.",
+  "effect.meridian_vanilla_healing.arm_injury": "Arm Injury",
+  "effect.meridian_vanilla_healing.arm_injury.note": "A wounded arm has no strength in it: strikes land lighter and digging goes slower when it is the favoured arm.",
+  "effect.meridian_vanilla_healing.crippled_hand": "Crippled Hand",
+  "effect.meridian_vanilla_healing.crippled_hand.note": "The hand cannot close. Whatever is put in it falls.",
+  "effect.meridian_vanilla_healing.abdomen_injury": "Abdomen Injury",
+  "effect.meridian_vanilla_healing.abdomen_injury.note": "A wounded belly keeps nothing down for long; hunger comes faster.",
+  "effect.meridian_vanilla_healing.short_breath": "Short of Breath",
+  "effect.meridian_vanilla_healing.short_breath.note": "A tight chest and short breath: running costs more and a held breath runs out sooner.",
+  "effect.meridian_vanilla_healing.neck_injury": "Neck Injury",
+  "effect.meridian_vanilla_healing.neck_injury.note": "A wounded neck pulls at every effort; both hands work at less than full strength.",
+  "effect.meridian_vanilla_healing.dizziness": "Dizziness",
+  "effect.meridian_vanilla_healing.dizziness.note": "A heavy blow to the head leaves it swimming; less qi is drawn in with each breath."
+}

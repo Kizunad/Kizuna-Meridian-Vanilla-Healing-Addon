@@ -9,3 +9,58 @@ totem_enabled = true
 totem_minimum_hp_ratio = 0.25
 respect_peaceful_difficulty = true
 respect_natural_regeneration = true
+
+# 部位受伤挂状态效果：跟着身体走，HP 回到门槛以上就撤，牛奶解不了。enabled = false 整套关掉。
+[injury]
+enabled = true
+# 部位 HP 不高于上限的这个比例算「受伤」；HP 为零算「归零」。
+injured_ratio = 0.5
+# 头每挨一下给多久的原版反胃（tick，20 tick 一秒；0 表示不给）。
+head_hit_nausea_ticks = 100
+
+# 每一组看哪些部位（写的是身体模板里的部位 ID）。一组里有几个部位就取伤得最重的那个；写成空表就是不看这一组。
+[injury.parts]
+leg = ["left_thigh", "right_thigh", "left_lower_leg", "right_lower_leg", "left_foot", "right_foot"]
+hip = ["pelvis"]
+left_arm = ["left_upper_arm", "left_forearm"]
+right_arm = ["right_upper_arm", "right_forearm"]
+left_hand = ["left_hand"]
+right_hand = ["right_hand"]
+abdomen = ["abdomen"]
+chest = ["chest"]
+neck = ["neck"]
+head = ["head"]
+
+# 器官：两眼都归零才失明；肺坏一边就气短，全坏再减移速。
+[injury.organs]
+eyes = ["left_eye", "right_eye"]
+lungs = ["left_lung", "right_lung"]
+
+# 强度都是乘在原值上的倍数：0.85 就是少一成半，2.0 就是翻倍。
+# 移速、跳跃、攻击、挖掘、真元摄入只能写 (0, 1]；饥饿、氧气消耗只能写 [1, 10]。
+[injury.strength]
+# 腿（大腿、小腿、足）：受伤减移速；归零减得更多、跳不高，而且不能疾跑。
+leg_injured_speed = 0.85
+leg_zero_speed = 0.60
+leg_zero_jump = 0.50
+# 骨盆：受伤减移速；归零减得更多，而且不能疾跑。
+hip_injured_speed = 0.90
+hip_zero_speed = 0.70
+# 手臂（上臂、前臂；手受伤也算手臂受伤一档）：只算惯用手那一条，减攻击伤害和挖掘速度。手归零另外会拿不住东西。
+arm_injured_attack = 0.80
+arm_injured_mining = 0.70
+arm_zero_attack = 0.50
+arm_zero_mining = 0.30
+# 腹：饥饿消耗变多。
+abdomen_injured_hunger = 1.5
+abdomen_zero_hunger = 3.0
+# 气短（胸受伤，或肺坏了一边）：疾跑时饥饿消耗、水下氧气消耗变多。
+breath_sprint_hunger = 2.0
+breath_air = 2.0
+# 两边肺都坏了，再减移速。
+lungs_zero_speed = 0.80
+# 颈受伤：两只手的攻击伤害、挖掘速度都减。
+neck_attack = 0.80
+neck_mining = 0.70
+# 头晕（头受伤）：真元摄入变少，不动画面。
+dizzy_qi_intake = 0.70
