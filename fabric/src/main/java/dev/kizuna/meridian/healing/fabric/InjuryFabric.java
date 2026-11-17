@@ -106,7 +106,8 @@ public final class InjuryFabric {
         blind(entity, burden.blind());
         int nausea = HealingFabric.config().injury().headHitNauseaTicks();
         if (tracker.nauseaPending && nausea > 0 && entity.isAlive()) {
-            entity.addEffect(new MobEffectInstance(MobEffects.NAUSEA, nausea));
+            entity.addEffect(new MobEffectInstance(MobEffects.NAUSEA, nausea, 0, false /* ambient */,
+                    false /* showParticles */, true /* showIcon */));
         }
         tracker.nauseaPending = false;
         InjuryQi.reconcile(entity, tracker);

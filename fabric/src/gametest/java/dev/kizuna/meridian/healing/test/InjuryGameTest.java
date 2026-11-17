@@ -139,6 +139,7 @@ public final class InjuryGameTest {
                 MobEffectInstance nausea = vindicator.getEffect(MobEffects.NAUSEA);
                 context.assertTrue(nausea != null && nausea.getDuration() > 0 && nausea.getDuration() <= 100,
                         "头挨了一下应当有 5 秒以内的反胃：" + nausea);
+                context.assertTrue(!nausea.isVisible() && nausea.showIcon(), "反胃要不出粒子、有图标");
                 context.assertTrue(!vindicator.hasEffect(InjuryEffects.holder(InjurySign.DIZZINESS))
                         && dizzy(vindicator).isEmpty(), "头还在一半以上，不该头晕");
                 hit(vindicator, "head", 7);
