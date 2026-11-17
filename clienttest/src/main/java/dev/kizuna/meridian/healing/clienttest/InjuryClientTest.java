@@ -142,8 +142,12 @@ public final class InjuryClientTest implements FabricClientGameTest {
         // 镜头在正前方偏高处看着他；第 10 张把右手打到零，斧子掉在脚下，他空着手站着。
         look(context, world, base.add(0.5, 1.2, 5.5), base.add(0.5, 1.0, 0.5));
         Vec3 feet = base.add(0.5, 0, 0.5);
-        Vindicator vindicator = world.getServer().computeOnServer(
-                server -> vindicator(server, feet, new ItemStack(Items.IRON_AXE)));
+        Vindicator vindicator = world.getServer().computeOnServer(server -> {
+            Vindicator spawned = vindicator(server, feet, new ItemStack(Items.IRON_AXE));
+            // 固定镜头只看掉斧子：让他留在掉落点旁，伤势仍由实体 tick 正常处理。
+            spawned.setNoAi(true /* aiDisabled */);
+            return spawned;
+        });
         settle(context, world);
         List<String> rows = new ArrayList<>();
         for (int frame = 1; frame <= HAND_FRAMES; frame++) {
