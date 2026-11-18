@@ -14,5 +14,6 @@
   "effect.meridian_vanilla_healing.neck_injury": "颈伤",
   "effect.meridian_vanilla_healing.neck_injury.note": "颈上带伤，一使劲就牵着疼，两手出力都打了折扣。",
   "effect.meridian_vanilla_healing.dizziness": "头晕",
-  "effect.meridian_vanilla_healing.dizziness.note": "头上挨了重的，昏沉发晕，吐纳时纳进来的真元少了。"
+  "effect.meridian_vanilla_healing.dizziness.note": "头上挨了重的，昏沉发晕，吐纳时纳进来的真元少了。",
+  "status_group.meridian_vanilla_healing.injury": "伤势"
 }

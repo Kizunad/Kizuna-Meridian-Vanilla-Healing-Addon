@@ -14,5 +14,6 @@
   "effect.meridian_vanilla_healing.neck_injury": "Neck Injury",
   "effect.meridian_vanilla_healing.neck_injury.note": "A wounded neck pulls at every effort; both hands work at less than full strength.",
   "effect.meridian_vanilla_healing.dizziness": "Dizziness",
-  "effect.meridian_vanilla_healing.dizziness.note": "A heavy blow to the head leaves it swimming; less qi is drawn in with each breath."
+  "effect.meridian_vanilla_healing.dizziness.note": "A heavy blow to the head leaves it swimming; less qi is drawn in with each breath.",
+  "status_group.meridian_vanilla_healing.injury": "Injuries"
 }
