@@ -10,8 +10,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.effect.MobEffect;
-import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.HumanoidArm;
@@ -93,24 +91,38 @@ public final class InjuryFabric {
         }
     }
 
+    static void clear(LivingEntity entity) {
+        InjuryTracker tracker = ((InjuryEntityAccess) entity).meridian$injuries();
+        tracker.clear();
+        projectAttributes(entity, InjuryBurden.NONE);
+        tracker.effects.clear(entity);
+    }
+
     private static void apply(LivingEntity entity, InjuryTracker tracker) {
         // 属性倍数、给人看的效果、失明、头挨打的反胃、头晕的真元修正，都对着刚算出来的这一份落一遍。
         InjuryBurden burden = tracker.burden;
+        projectAttributes(entity, burden);
+        for (InjurySign sign : InjurySign.values()) {
+            tracker.effects.show(entity, InjuryEffects.holder(sign), burden.signs().get(sign));
+        }
+        if (burden.blind()) {
+            tracker.effects.show(entity, MobEffects.BLINDNESS, 0);
+        } else {
+            tracker.effects.removeOwned(entity, MobEffects.BLINDNESS);
+        }
+        int nausea = HealingFabric.config().injury().headHitNauseaTicks();
+        if (tracker.nauseaPending && nausea > 0 && entity.isAlive()) {
+            tracker.effects.nausea(entity, nausea);
+        }
+        tracker.nauseaPending = false;
+        InjuryQi.reconcile(entity, tracker);
+    }
+
+    private static void projectAttributes(LivingEntity entity, InjuryBurden burden) {
         scale(entity, Attributes.MOVEMENT_SPEED, SPEED, speedFactor(entity, burden.speed()));
         scale(entity, Attributes.JUMP_STRENGTH, JUMP, burden.jump());
         scale(entity, Attributes.ATTACK_DAMAGE, ATTACK, burden.attack());
         scale(entity, Attributes.BLOCK_BREAK_SPEED, MINING, burden.mining());
-        for (InjurySign sign : InjurySign.values()) {
-            show(entity, InjuryEffects.holder(sign), burden.signs().get(sign));
-        }
-        blind(entity, burden.blind());
-        int nausea = HealingFabric.config().injury().headHitNauseaTicks();
-        if (tracker.nauseaPending && nausea > 0 && entity.isAlive()) {
-            entity.addEffect(new MobEffectInstance(MobEffects.NAUSEA, nausea, 0, false /* ambient */,
-                    false /* showParticles */, true /* showIcon */));
-        }
-        tracker.nauseaPending = false;
-        InjuryQi.reconcile(entity, tracker);
     }
 
     private static double speedFactor(LivingEntity entity, double speed) {
@@ -132,34 +144,6 @@ public final class InjuryFabric {
         }
         instance.addOrUpdateTransientModifier(
                 new AttributeModifier(id, multiplier - 1, AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL));
-    }
-
-    private static void show(LivingEntity entity, Holder<MobEffect> effect, Integer amplifier) {
-        // 不该有的撤掉；该有而没有、或者等级不对的，换成对的。时长无限，有图标，不出粒子。
-        MobEffectInstance current = entity.getEffect(effect);
-        if (current != null && (amplifier == null || current.getAmplifier() != amplifier)) {
-            entity.removeEffect(effect);
-            current = null;
-        }
-        if (amplifier != null && current == null) {
-            entity.addEffect(standing(effect, amplifier));
-        }
-    }
-
-    private static void blind(LivingEntity entity, boolean blind) {
-        // 两眼都坏了挂原版失明。只认自己挂的那种（无限时长、环境效果、不出粒子），别处来的失明不动。
-        MobEffectInstance current = entity.getEffect(MobEffects.BLINDNESS);
-        boolean ours = current != null && current.isInfiniteDuration() && current.isAmbient() && !current.isVisible();
-        if (blind && !ours) {
-            entity.addEffect(standing(MobEffects.BLINDNESS, 0));
-        } else if (!blind && ours) {
-            entity.removeEffect(MobEffects.BLINDNESS);
-        }
-    }
-
-    private static MobEffectInstance standing(Holder<MobEffect> effect, int amplifier) {
-        return new MobEffectInstance(effect, MobEffectInstance.INFINITE_DURATION, amplifier,
-                true /* ambient */, false /* visible */, true /* showIcon */);
     }
 
     private static void drop(LivingEntity entity, InteractionHand hand) {

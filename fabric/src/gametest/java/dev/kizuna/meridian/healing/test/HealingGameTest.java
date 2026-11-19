@@ -65,12 +65,14 @@ public final class HealingGameTest implements BodyHealthHost {
     private static final InMemoryBodyStore STORE = new InMemoryBodyStore(List.of(), List.of());
     private static final Set<String> REJECTED_SUBJECTS = new HashSet<>();
     private static final Set<String> PAUSED_SUBJECTS = new HashSet<>();
+    private static final Set<String> UNCLAIMED_SUBJECTS = new HashSet<>();
     private static final AtomicInteger HOST_QUERIES = new AtomicInteger();
     private static final Map<String, Integer> SUBJECT_QUERIES = new HashMap<>();
     private static final int PROBE_WATCH_TICKS = 61;
     private static final int PROBE_WATCH_SECONDS = 3;
     private static final int PAUSED_TICKS = 41;
     private static final int EFFECT_TICKS = 100;
+    private static final BlockPos UNDEAD_SPAWN = new BlockPos(4, 2, 4);
     private static final double DAMAGED_PART_HP = 40;
     private static final double DAMAGED_RATIO = 0.4;
     private static final BodyCommandHandler<String> COMMANDS = new BodyCommandHandler<>(
@@ -206,8 +208,8 @@ public final class HealingGameTest implements BodyHealthHost {
         unbound.setHealth(5);
         unbound.heal(2);
         close(context, unbound.getHealth(), 7, "未绑定保留原版");
-        var undead = context.spawn(EntityTypes.HUSK, 4, 2, 4);
-        undead.setNoAi(true);
+        var undead = context.spawn(EntityTypes.SKELETON, UNDEAD_SPAWN);
+        undead.setNoAi(true /* noAi */);
         bind(undead, 100);
         MobEffects.INSTANT_HEALTH.value().applyInstantaneousEffect(context.getLevel(), null, null, undead, 0, 1);
         close(context, hp(undead, 0), 94, "亡灵治疗仍作为6伤害交给伤害附属");
@@ -440,7 +442,7 @@ public final class HealingGameTest implements BodyHealthHost {
             return HealthHostProtobuf.encodeResponse(response.setFailure(failure).build());
         }
         var found = STORE.find(new BodyId(request.getSubjectId()));
-        if (found.isEmpty()) {
+        if (found.isEmpty() || UNCLAIMED_SUBJECTS.contains(request.getSubjectId())) {
             return HealthHostProtobuf.encodeResponse(response.setUnbound(true).build());
         }
         if (request.hasEffect()) {
@@ -498,14 +500,22 @@ public final class HealingGameTest implements BodyHealthHost {
                 new TimeCursor(new DefinitionId("sample:world"), "epoch", 0), 0));
     }
 
-    private static CompoundTag save(LivingEntity entity) {
+    static void unclaim(LivingEntity entity) {
+        UNCLAIMED_SUBJECTS.add(entity.getStringUUID());
+    }
+
+    static void reclaim(LivingEntity entity) {
+        UNCLAIMED_SUBJECTS.remove(entity.getStringUUID());
+    }
+
+    static CompoundTag save(LivingEntity entity) {
         // 受保护的存档方法只能经公开入口调用；得到的标签与正式实体存档相同。
         var output = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, entity.registryAccess());
         entity.saveWithoutId(output);
         return output.buildResult();
     }
 
-    private static void load(LivingEntity entity, CompoundTag saved) {
+    static void load(LivingEntity entity, CompoundTag saved) {
         // 与区块读取相同走公开 load，再进入实体自身的附加存档读取。
         entity.load(TagValueInput.create(ProblemReporter.DISCARDING, entity.registryAccess(), saved));
     }

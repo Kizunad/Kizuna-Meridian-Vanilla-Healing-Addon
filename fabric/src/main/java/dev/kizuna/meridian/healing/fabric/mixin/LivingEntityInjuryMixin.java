@@ -7,6 +7,7 @@ import dev.kizuna.meridian.healing.fabric.InjuryTracker;
 import net.minecraft.core.Holder;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -33,6 +34,15 @@ public abstract class LivingEntityInjuryMixin implements InjuryEntityAccess {
     @Override
     public InjuryTracker meridian$injuries() {
         return meridian$injuries;
+    }
+
+    @Inject(method = "addEffect(Lnet/minecraft/world/effect/MobEffectInstance;Lnet/minecraft/world/entity/Entity;)Z",
+            at = @At(value = "FIELD", target = "Lnet/minecraft/world/entity/LivingEntity;activeEffects:Ljava/util/Map;",
+                    ordinal = 0))
+    private void meridian$releaseInjurySlot(MobEffectInstance incoming, Entity source,
+            CallbackInfoReturnable<Boolean> callback) {
+        // 原版通过免疫检查后会原地合并同名实例。先让出自己的槽，保留外来效果的完整时长与等级。
+        meridian$injuries.effects.removeOwned((LivingEntity) (Object) this, incoming.getEffect());
     }
 
     @Inject(method = "tick", at = @At("TAIL"))

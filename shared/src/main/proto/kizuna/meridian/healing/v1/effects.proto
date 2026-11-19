@@ -9,6 +9,9 @@ message EffectState {
   repeated PartShield shields = 2;
   int32 absorption_level = 3; // 放大等级 +1，零表示没有效果。
   repeated PartShield health_boost_grants = 4; // amount 为本附属已授予的上限增量。
+  repeated string injury_effects = 5; // 原版活动效果表中由伤势施加的实例。
+  // 已停止投影；上限增量仍归封存的身体。即使为 false 也写出，以区分空归属清单与旧存档。
+  optional bool detached = 6;
 }
 message PartShield {
   string part_id = 1;

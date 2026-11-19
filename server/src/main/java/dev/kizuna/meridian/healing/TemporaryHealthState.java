@@ -5,16 +5,19 @@ import dev.kizuna.meridian.healing.pb.HealingEffects.EffectState;
 import dev.kizuna.meridian.healing.pb.HealingEffects.PartShield;
 import dev.kizuna.meridian.protocol.pb.BodyMessages.BodySnapshot;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** 此附属拥有的临时护盾与上限增量；不保存第二份身体 HP。 */
 public final class TemporaryHealthState {
     private String bodyId = "";
+    private boolean detached;
     private int absorptionLevel;
     private final Map<String, Double> shields = new LinkedHashMap<>();
     private final Map<String, Double> boostGrants = new LinkedHashMap<>();
 
     public void bind(BodySnapshot body) {
+        detached = false;
         // 换成另一具身体时不能继承旧身体的局部效果。
         if (!bodyId.equals(body.getId())) {
             bodyId = body.getId();
@@ -28,6 +31,16 @@ public final class TemporaryHealthState {
     public int absorptionLevel() {
         // 等级只用于识别加载与效果边界，不能按剩余黄心推断并重新补满。
         return absorptionLevel;
+    }
+
+    public boolean hasProjection() {
+        return !bodyId.isEmpty() && !detached;
+    }
+
+    public void detach() {
+        // 上限增量已写入身体，同一具身体回来时仍需凭它核对或撤销。
+        detached = true;
+        clearAbsorption();
     }
 
     public void grantAbsorption(BodySnapshot body, int level, HealingConfig config) {
@@ -84,14 +97,33 @@ public final class TemporaryHealthState {
     }
 
     public byte[] encode() {
+        return encode(List.of());
+    }
+
+    public byte[] encode(List<String> injuryEffects) {
         // NBT 只包裹 protoc 消息字节，重连保留各部位已经消耗的黄心。
-        var state = EffectState.newBuilder().setBodyId(bodyId).setAbsorptionLevel(absorptionLevel);
-        shields.forEach((id, amount) -> state.addShields(PartShield.newBuilder().setPartId(id).setAmount(amount)));
-        boostGrants.forEach((id, amount) -> state.addHealthBoostGrants(PartShield.newBuilder().setPartId(id).setAmount(amount)));
+        var state = EffectState.newBuilder()
+                .setBodyId(bodyId)
+                .setDetached(detached)
+                .setAbsorptionLevel(absorptionLevel)
+                .addAllInjuryEffects(injuryEffects);
+        shields.forEach((id, amount) -> state.addShields(partShield(id, amount)));
+        boostGrants.forEach((id, amount) -> state.addHealthBoostGrants(partShield(id, amount)));
         return state.build().toByteArray();
     }
 
+    private static PartShield partShield(String id, double amount) {
+        return PartShield.newBuilder()
+                .setPartId(id)
+                .setAmount(amount)
+                .build();
+    }
+
     public void decode(byte[] bytes) {
+        restore(bytes);
+    }
+
+    public EffectState restore(byte[] bytes) {
         // 存档边界同样限制规模和数值；损坏数据拒绝加载，不能静默重新授予效果。
         if (bytes.length > 65536) {
             throw HealingErrors.invalid(HealingErrors.EFFECT_STATE);
@@ -104,10 +136,12 @@ public final class TemporaryHealthState {
             Map<String, Double> restoredShields = readAmounts(state.getShieldsList());
             Map<String, Double> restoredGrants = readAmounts(state.getHealthBoostGrantsList());
             bodyId = state.getBodyId();
+            detached = state.getDetached();
             absorptionLevel = state.getAbsorptionLevel();
             shields.clear();
             shields.putAll(restoredShields);
             recordBoost(restoredGrants);
+            return state;
         } catch (InvalidProtocolBufferException failure) {
             throw new IllegalArgumentException(HealingErrors.EFFECT_STATE, failure);
         }

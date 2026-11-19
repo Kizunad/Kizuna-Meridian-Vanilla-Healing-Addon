@@ -85,6 +85,17 @@ public final class HealingFabric implements ModInitializer {
         access.meridian$forgetBinding();
         Optional<HealingBridge.Binding> binding = bridge.inspect(entity.getStringUUID());
         access.meridian$rememberBinding(binding.isPresent());
+        var state = access.meridian$effects();
+        if (binding.isEmpty() && state.hasProjection()) {
+            state.detach();
+            InjuryFabric.clear(entity);
+            // 黄心交回原版上限裁剪；身上仍有效的生命提升重新使用原版属性。
+            entity.setAbsorptionAmount(entity.getAbsorptionAmount());
+            var boost = entity.getEffect(MobEffects.HEALTH_BOOST);
+            if (boost != null) {
+                MobEffects.HEALTH_BOOST.value().addAttributeModifiers(entity.getAttributes(), boost.getAmplifier());
+            }
+        }
         return binding;
     }
 

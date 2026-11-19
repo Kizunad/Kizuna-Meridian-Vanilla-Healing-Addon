@@ -3,6 +3,7 @@ package dev.kizuna.meridian.healing.fabric.mixin;
 import dev.kizuna.meridian.healing.TemporaryHealthState;
 import dev.kizuna.meridian.healing.fabric.HealingEntityAccess;
 import dev.kizuna.meridian.healing.fabric.HealingFabric;
+import dev.kizuna.meridian.healing.fabric.InjuryEntityAccess;
 import com.mojang.serialization.Codec;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
@@ -297,9 +298,12 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
             var saved = input.read(MERIDIAN_EFFECTS_KEY, Codec.BYTE_BUFFER);
             if (saved.isPresent()) {
                 // 字节缓冲按 NBT 字节数组存取，与旧存档同一键与同一标签类型。
-                byte[] bytes = new byte[saved.get().remaining()];
-                saved.get().get(bytes);
-                meridian$effects.decode(bytes);
+                var buffer = saved.get();
+                byte[] bytes = new byte[buffer.remaining()];
+                buffer.get(bytes);
+                var state = meridian$effects.restore(bytes);
+                var entity = (LivingEntity) (Object) this;
+                ((InjuryEntityAccess) entity).meridian$injuries().effects.restore(entity, state);
             }
         } finally {
             meridian$loading = false;
@@ -310,6 +314,9 @@ public abstract class LivingEntityHealingMixin implements HealingEntityAccess {
     @Inject(method = "addAdditionalSaveData", at = @At("TAIL"))
     private void meridian$writeEffects(ValueOutput output, CallbackInfo callback) {
         // 保存 protoc 效果记录，与原版效果列表同属实体存档。
-        output.store(MERIDIAN_EFFECTS_KEY, Codec.BYTE_BUFFER, ByteBuffer.wrap(meridian$effects.encode()));
+        var entity = (LivingEntity) (Object) this;
+        var ids = ((InjuryEntityAccess) entity).meridian$injuries().effects.savedIds(entity);
+        byte[] bytes = meridian$effects.encode(ids);
+        output.store(MERIDIAN_EFFECTS_KEY, Codec.BYTE_BUFFER, ByteBuffer.wrap(bytes));
     }
 }
