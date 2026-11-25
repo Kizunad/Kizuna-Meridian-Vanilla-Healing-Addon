@@ -3,7 +3,13 @@
   "id": "meridian_vanilla_healing",
   "version": "${version}",
   "name": "Kizuna's Meridian Vanilla Healing Addon",
-  "description": "原版治疗、自然回血、局部黄心与图腾的身体 HP 接线",
+  "contact": {
+    "homepage": "https://github.com/Kizunad/Kizuna-Meridian-Vanilla-Healing-Addon",
+    "sources": "https://github.com/Kizunad/Kizuna-Meridian-Vanilla-Healing-Addon",
+    "issues": "https://github.com/Kizunad/Kizuna-Meridian-Vanilla-Healing-Addon/issues"
+  },
+  "icon": "assets/meridian_vanilla_healing/icon.png",
+  "description": "Applies healing, natural regeneration, absorption and totem effects to the body.\n将治疗、自然回血、伤害吸收和不死图腾的效果作用到身体。",
   "authors": ["Kizunad"],
   "license": "PolyForm-Noncommercial-1.0.0",
   "environment": "*",
