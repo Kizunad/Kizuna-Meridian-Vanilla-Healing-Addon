@@ -39,6 +39,8 @@ public final class HealingDamageIntegration implements BodyDamageIntegration {
         state.consumeShield(commit.getContext().getDamage().getHit().getPartId(), absorbed);
         if (commit.getBody().getVitality().getDead()) {
             state.clearAbsorption();
+            // 死亡血量由伤害入口写回，直接伤害须先完成原版死亡事件和掉落。
+            return;
         }
         HealingFabric.sync(entity, commit.getBody());
     }
